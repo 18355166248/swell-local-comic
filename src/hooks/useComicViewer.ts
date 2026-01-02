@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import type { ComicFile, ComicViewerState } from "../types";
+import type { ComicFile, ComicViewerState, ViewMode } from "../types";
 import { scanImageFiles, loadImageFile } from "../utils/fileUtils";
 
 export const useComicViewer = () => {
@@ -7,6 +7,9 @@ export const useComicViewer = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [imageUrl, setImageUrl] = useState<string>("");
+  const [viewMode, setViewMode] = useState<ViewMode>("page");
+  const [imageWidth, setImageWidth] = useState<number>(800);
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
 
   const handleFolderSelect = useCallback(async () => {
     try {
@@ -21,11 +24,17 @@ export const useComicViewer = () => {
       if (fileList.length > 0) {
         const url = await loadImageFile(fileList[0]);
         setImageUrl(url);
+
+        // 如果是滚动模式，预加载所有图片
+        if (viewMode === 'scroll') {
+          const urls = await Promise.all(fileList.map(file => loadImageFile(file)));
+          setImageUrls(urls);
+        }
       }
     } catch (error) {
       console.error("选择文件夹失败:", error);
     }
-  }, []);
+  }, [viewMode]);
 
   const loadImage = useCallback(async (file: ComicFile) => {
     try {
@@ -101,24 +110,67 @@ export const useComicViewer = () => {
     return () => window.removeEventListener("keydown", handleKeyPress);
   }, [handleKeyPress]);
 
-  // 鼠标滚轮缩放
+  // 切换视图模式
+  const toggleViewMode = useCallback(async () => {
+    const newMode: ViewMode = viewMode === 'page' ? 'scroll' : 'page';
+    setViewMode(newMode);
+
+    // 切换到滚动模式时，加载所有图片
+    if (newMode === 'scroll' && files.length > 0 && imageUrls.length === 0) {
+      const urls = await Promise.all(files.map(file => loadImageFile(file)));
+      setImageUrls(urls);
+    }
+  }, [viewMode, files, imageUrls.length]);
+
+  // 设置图片宽度
+  const setImageWidthValue = useCallback((width: number) => {
+    setImageWidth(Math.max(200, Math.min(2000, width)));
+  }, []);
+
+  // 鼠标滚轮处理
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
-      e.preventDefault();
-      if (e.deltaY < 0) {
-        zoomIn();
+      // 在滚动模式下，如果按住Ctrl键，则缩放；否则滚动
+      if (viewMode === 'scroll') {
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          if (e.deltaY < 0) {
+            zoomIn();
+          } else {
+            zoomOut();
+          }
+        }
+        // 否则允许正常滚动
       } else {
-        zoomOut();
+        // 分页模式下，滚轮用于缩放
+        e.preventDefault();
+        if (e.deltaY < 0) {
+          zoomIn();
+        } else {
+          zoomOut();
+        }
       }
     },
-    [zoomIn, zoomOut]
+    [viewMode, zoomIn, zoomOut]
   );
+
+  // 视图模式切换时，加载所有图片
+  useEffect(() => {
+    if (viewMode === 'scroll' && files.length > 0 && imageUrls.length === 0) {
+      Promise.all(files.map(file => loadImageFile(file))).then(urls => {
+        setImageUrls(urls);
+      });
+    }
+  }, [viewMode, files, imageUrls.length]);
 
   const state: ComicViewerState = {
     files,
     currentIndex,
     zoom,
     imageUrl,
+    viewMode,
+    imageWidth,
+    imageUrls,
   };
 
   return {
@@ -131,6 +183,8 @@ export const useComicViewer = () => {
       zoomOut,
       resetZoom,
       handleWheel,
+      toggleViewMode,
+      setImageWidth: setImageWidthValue,
       goToPage: (index: number) => {
         if (index >= 0 && index < files.length) {
           setCurrentIndex(index);

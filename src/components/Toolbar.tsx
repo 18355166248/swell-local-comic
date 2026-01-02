@@ -1,3 +1,5 @@
+import type { ViewMode } from "../types";
+
 interface ToolbarProps {
   onFolderSelect: () => void;
   currentFileName?: string;
@@ -7,6 +9,10 @@ interface ToolbarProps {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onResetZoom: () => void;
+  viewMode: ViewMode;
+  onToggleViewMode: () => void;
+  imageWidth: number;
+  onImageWidthChange: (width: number) => void;
 }
 
 export default function Toolbar({
@@ -17,7 +23,11 @@ export default function Toolbar({
   zoom,
   onZoomIn,
   onZoomOut,
-  onResetZoom
+  onResetZoom,
+  viewMode,
+  onToggleViewMode,
+  imageWidth,
+  onImageWidthChange
 }: ToolbarProps) {
   return (
     <div className="bg-gray-800 p-4 flex items-center justify-between text-white">
@@ -38,23 +48,53 @@ export default function Toolbar({
       {totalFiles > 0 && (
         <div className="flex items-center space-x-2">
           <button
-            onClick={onZoomOut}
-            className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition-colors"
+            onClick={onToggleViewMode}
+            className={`px-3 py-1 rounded transition-colors ${
+              viewMode === 'scroll'
+                ? 'bg-green-600 hover:bg-green-700'
+                : 'bg-gray-700 hover:bg-gray-600'
+            }`}
+            title={viewMode === 'scroll' ? '切换到分页模式' : '切换到滚动模式'}
           >
-            缩小
+            {viewMode === 'scroll' ? '📜 滚动' : '📄 分页'}
           </button>
-          <button
-            onClick={onResetZoom}
-            className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition-colors"
-          >
-            {Math.round(zoom * 100)}%
-          </button>
-          <button
-            onClick={onZoomIn}
-            className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition-colors"
-          >
-            放大
-          </button>
+
+          {viewMode === 'scroll' && (
+            <div className="flex items-center space-x-2 ml-2 pl-2 border-l border-gray-600">
+              <label className="text-sm text-gray-300">宽度:</label>
+              <input
+                type="number"
+                min="200"
+                max="2000"
+                step="50"
+                value={imageWidth}
+                onChange={(e) => onImageWidthChange(Number(e.target.value))}
+                className="bg-gray-700 text-white px-2 py-1 rounded w-20 text-sm"
+              />
+              <span className="text-sm text-gray-400">px</span>
+            </div>
+          )}
+
+          <div className="flex items-center space-x-2 ml-2 pl-2 border-l border-gray-600">
+            <button
+              onClick={onZoomOut}
+              className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition-colors"
+            >
+              缩小
+            </button>
+            <button
+              onClick={onResetZoom}
+              className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition-colors"
+            >
+              {Math.round(zoom * 100)}%
+            </button>
+            <button
+              onClick={onZoomIn}
+              className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition-colors"
+            >
+              放大
+            </button>
+          </div>
         </div>
       )}
     </div>
