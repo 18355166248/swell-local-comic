@@ -14,3 +14,11 @@ export interface ComicViewerState {
   imageWidth: number;
   imageUrls: string[];
 }
+
+export interface ReadingHistory {
+  folderName: string;
+  currentIndex: number;
+  totalFiles: number;
+  lastReadTime: number;
+  currentFileName?: string;
+}

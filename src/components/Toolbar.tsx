@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router";
 import type { ViewMode } from "../types";
 
 interface ToolbarProps {
@@ -27,8 +28,10 @@ export default function Toolbar({
   viewMode,
   onToggleViewMode,
   imageWidth,
-  onImageWidthChange
+  onImageWidthChange,
 }: ToolbarProps) {
+  const navigate = useNavigate();
+
   return (
     <div className="bg-gray-800 p-4 flex items-center justify-between text-white">
       <div className="flex items-center space-x-4">
@@ -37,6 +40,12 @@ export default function Toolbar({
           className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors"
         >
           选择漫画文件夹
+        </button>
+        <button
+          onClick={() => navigate("/history")}
+          className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg transition-colors"
+        >
+          阅读历史
         </button>
         {totalFiles > 0 && (
           <span className="text-sm text-gray-300">
@@ -50,16 +59,16 @@ export default function Toolbar({
           <button
             onClick={onToggleViewMode}
             className={`px-3 py-1 rounded transition-colors ${
-              viewMode === 'scroll'
-                ? 'bg-green-600 hover:bg-green-700'
-                : 'bg-gray-700 hover:bg-gray-600'
+              viewMode === "scroll"
+                ? "bg-green-600 hover:bg-green-700"
+                : "bg-gray-700 hover:bg-gray-600"
             }`}
-            title={viewMode === 'scroll' ? '切换到分页模式' : '切换到滚动模式'}
+            title={viewMode === "scroll" ? "切换到分页模式" : "切换到滚动模式"}
           >
-            {viewMode === 'scroll' ? '📜 滚动' : '📄 分页'}
+            {viewMode === "scroll" ? "📜 滚动" : "📄 分页"}
           </button>
 
-          {viewMode === 'scroll' && (
+          {viewMode === "scroll" && (
             <div className="flex items-center space-x-2 ml-2 pl-2 border-l border-gray-600">
               <label className="text-sm text-gray-300">宽度:</label>
               <input

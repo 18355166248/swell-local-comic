@@ -1,15 +1,17 @@
 import { useState, useCallback, useEffect } from "react";
 import type { ComicFile, ComicViewerState, ViewMode } from "../types";
 import { scanImageFiles, loadImageFile } from "../utils/fileUtils";
+import { saveHistory } from "../utils/historyUtils";
 
 export const useComicViewer = () => {
   const [files, setFiles] = useState<ComicFile[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [imageUrl, setImageUrl] = useState<string>("");
-  const [viewMode, setViewMode] = useState<ViewMode>("page");
-  const [imageWidth, setImageWidth] = useState<number>(800);
+  const [viewMode, setViewMode] = useState<ViewMode>("scroll");
+  const [imageWidth, setImageWidth] = useState<number>(400);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const [folderName, setFolderName] = useState<string>("");
 
   const handleFolderSelect = useCallback(async () => {
     try {
@@ -20,14 +22,17 @@ export const useComicViewer = () => {
       setFiles(fileList);
       setCurrentIndex(0);
       setZoom(1);
+      setFolderName(dirHandle.name);
 
       if (fileList.length > 0) {
         const url = await loadImageFile(fileList[0]);
         setImageUrl(url);
 
         // 如果是滚动模式，预加载所有图片
-        if (viewMode === 'scroll') {
-          const urls = await Promise.all(fileList.map(file => loadImageFile(file)));
+        if (viewMode === "scroll") {
+          const urls = await Promise.all(
+            fileList.map((file) => loadImageFile(file))
+          );
           setImageUrls(urls);
         }
       }
@@ -112,12 +117,12 @@ export const useComicViewer = () => {
 
   // 切换视图模式
   const toggleViewMode = useCallback(async () => {
-    const newMode: ViewMode = viewMode === 'page' ? 'scroll' : 'page';
+    const newMode: ViewMode = viewMode === "page" ? "scroll" : "page";
     setViewMode(newMode);
 
     // 切换到滚动模式时，加载所有图片
-    if (newMode === 'scroll' && files.length > 0 && imageUrls.length === 0) {
-      const urls = await Promise.all(files.map(file => loadImageFile(file)));
+    if (newMode === "scroll" && files.length > 0 && imageUrls.length === 0) {
+      const urls = await Promise.all(files.map((file) => loadImageFile(file)));
       setImageUrls(urls);
     }
   }, [viewMode, files, imageUrls.length]);
@@ -131,7 +136,7 @@ export const useComicViewer = () => {
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
       // 在滚动模式下，如果按住Ctrl键，则缩放；否则滚动
-      if (viewMode === 'scroll') {
+      if (viewMode === "scroll") {
         if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
           if (e.deltaY < 0) {
@@ -156,12 +161,24 @@ export const useComicViewer = () => {
 
   // 视图模式切换时，加载所有图片
   useEffect(() => {
-    if (viewMode === 'scroll' && files.length > 0 && imageUrls.length === 0) {
-      Promise.all(files.map(file => loadImageFile(file))).then(urls => {
+    if (viewMode === "scroll" && files.length > 0 && imageUrls.length === 0) {
+      Promise.all(files.map((file) => loadImageFile(file))).then((urls) => {
         setImageUrls(urls);
       });
     }
   }, [viewMode, files, imageUrls.length]);
+
+  // 保存阅读历史记录
+  useEffect(() => {
+    if (folderName && files.length > 0) {
+      saveHistory({
+        folderName,
+        currentIndex,
+        totalFiles: files.length,
+        currentFileName: files[currentIndex]?.name,
+      });
+    }
+  }, [folderName, files, currentIndex]);
 
   const state: ComicViewerState = {
     files,
