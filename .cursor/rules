@@ -1,0 +1,352 @@
+# 项目开发规范
+
+## 项目概述
+这是一个本地图片/漫画阅读器项目，使用 React + TypeScript + Vite + TailwindCSS 技术栈。
+
+## 核心开发原则
+
+### 1. 代码封装规范
+
+#### 1.1 函数封装
+- 单一职责：每个函数只做一件事
+- 函数长度：单个函数不超过 50 行，超过需要拆分
+- 参数限制：函数参数不超过 5 个，超过使用对象参数
+- 命名规范：使用动词开头，语义清晰
+  - 示例：`getImageList()`, `handleImageClick()`, `formatImageUrl()`
+
+#### 1.2 工具函数封装
+- 所有工具函数放在 `src/utils/` 目录下
+- 按功能分类组织文件（如 `imageUtils.ts`, `fileUtils.ts`, `formatUtils.ts`）
+- 每个工具函数必须添加 JSDoc 注释说明用途和参数
+- 工具函数必须是纯函数，避免副作用
+
+```typescript
+/**
+ * 格式化图片 URL，支持本地文件和网络图片
+ * @param path - 图片路径
+ * @param isLocal - 是否为本地文件
+ * @returns 格式化后的 URL
+ */
+export function formatImageUrl(path: string, isLocal: boolean): string {
+  // 实现
+}
+```
+
+### 2. 组件抽离规范
+
+#### 2.1 组件拆分原则
+- **单一职责**：每个组件只负责一个功能
+- **可复用性**：通用组件放在 `src/components/common/` 目录
+- **业务组件**：业务相关组件放在 `src/components/` 目录
+- **组件大小**：单个组件文件不超过 300 行，超过需要拆分
+
+#### 2.2 组件目录结构
+```
+src/components/
+├── common/           # 通用组件（Button, Modal, Input 等）
+│   ├── Button/
+│   │   ├── index.tsx
+│   │   ├── Button.tsx
+│   │   └── Button.types.ts
+│   └── ...
+├── ImageViewer/      # 业务组件（图片查看器）
+│   ├── index.tsx
+│   ├── ImageViewer.tsx
+│   ├── ImageViewer.types.ts
+│   └── ImageViewer.module.css (如果需要)
+└── ...
+```
+
+#### 2.3 组件命名规范
+- 组件名使用 PascalCase（大驼峰）
+- 文件名与组件名保持一致
+- 组件必须使用 TypeScript，定义 Props 类型
+
+```typescript
+// ImageViewer.types.ts
+export interface ImageViewerProps {
+  images: string[];
+  currentIndex?: number;
+  onImageChange?: (index: number) => void;
+}
+
+// ImageViewer.tsx
+import { ImageViewerProps } from './ImageViewer.types';
+
+export const ImageViewer: React.FC<ImageViewerProps> = ({
+  images,
+  currentIndex = 0,
+  onImageChange,
+}) => {
+  // 组件实现
+};
+```
+
+#### 2.4 组件导出规范
+- 使用 `index.tsx` 作为组件的入口文件
+- 在 `index.tsx` 中导出主组件和类型
+
+```typescript
+// components/ImageViewer/index.tsx
+export { ImageViewer } from './ImageViewer';
+export type { ImageViewerProps } from './ImageViewer.types';
+```
+
+### 3. Hook 封装规范
+
+#### 3.1 Hook 命名规范
+- 自定义 Hook 必须以 `use` 开头
+- Hook 文件放在 `src/hooks/` 目录下
+- Hook 文件名使用 camelCase（小驼峰）
+
+#### 3.2 Hook 分类
+```
+src/hooks/
+├── useImageLoader.ts      # 图片加载相关
+├── useFileReader.ts       # 文件读取相关
+├── useImageViewer.ts      # 图片查看器逻辑
+├── useKeyboard.ts         # 键盘事件处理
+└── ...
+```
+
+#### 3.3 Hook 实现规范
+- Hook 必须返回对象或数组，保持一致的返回结构
+- 复杂逻辑的 Hook 需要添加 JSDoc 注释
+- Hook 内部状态管理要清晰，避免过度耦合
+
+```typescript
+/**
+ * 图片查看器 Hook
+ * @param images - 图片列表
+ * @param initialIndex - 初始索引
+ * @returns 图片查看器状态和控制方法
+ */
+export function useImageViewer(
+  images: string[],
+  initialIndex: number = 0
+) {
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const nextImage = useCallback(() => {
+    // 实现
+  }, [currentIndex, images.length]);
+
+  const prevImage = useCallback(() => {
+    // 实现
+  }, [currentIndex]);
+
+  return {
+    currentIndex,
+    currentImage: images[currentIndex],
+    isLoading,
+    nextImage,
+    prevImage,
+    goToImage: setCurrentIndex,
+  };
+}
+```
+
+#### 3.4 Hook 使用规范
+- 优先使用自定义 Hook 封装业务逻辑
+- 避免在组件中直接写复杂的状态管理逻辑
+- Hook 之间可以组合使用，但要避免循环依赖
+
+### 4. TailwindCSS 使用规范
+
+#### 4.1 样式优先原则
+- **优先使用 TailwindCSS**：所有样式都使用 TailwindCSS 类名
+- **避免内联样式**：除非是动态计算的样式值
+- **避免 CSS 模块**：除非是复杂的动画或特殊需求
+- **避免全局 CSS**：只在 `index.css` 中配置 TailwindCSS 和全局重置样式
+
+#### 4.2 TailwindCSS 类名组织
+- 类名顺序：布局 → 尺寸 → 间距 → 颜色 → 字体 → 其他
+- 使用多行格式提高可读性（超过 3 个类名时）
+
+```tsx
+// 好的示例
+<button className="
+  flex items-center justify-center
+  w-full h-12
+  px-4 py-2
+  bg-blue-500 hover:bg-blue-600
+  text-white font-semibold
+  rounded-lg transition-colors
+">
+  按钮
+</button>
+
+// 避免
+<button className="flex items-center justify-center w-full h-12 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-colors">
+  按钮
+</button>
+```
+
+#### 4.3 TailwindCSS 配置
+- 自定义主题配置放在 `tailwind.config.js` 中
+- 使用 CSS 变量定义主题色，便于主题切换
+- 合理使用 `@apply` 指令（仅在必要时使用）
+
+#### 4.4 响应式设计
+- 使用 TailwindCSS 响应式前缀：`sm:`, `md:`, `lg:`, `xl:`, `2xl:`
+- 移动端优先：先写移动端样式，再添加响应式样式
+
+```tsx
+<div className="
+  grid grid-cols-1
+  md:grid-cols-2
+  lg:grid-cols-3
+  gap-4
+">
+  {/* 内容 */}
+</div>
+```
+
+### 5. 文件组织规范
+
+#### 5.1 目录结构
+```
+src/
+├── components/          # 组件目录
+│   ├── common/         # 通用组件
+│   └── [Feature]/      # 功能组件
+├── hooks/              # 自定义 Hook
+├── utils/              # 工具函数
+├── types/              # TypeScript 类型定义
+├── constants/          # 常量定义
+├── assets/             # 静态资源
+├── App.tsx             # 根组件
+└── main.tsx            # 入口文件
+```
+
+#### 5.2 文件命名规范
+- **组件文件**：PascalCase（`ImageViewer.tsx`）
+- **Hook 文件**：camelCase，以 `use` 开头（`useImageViewer.ts`）
+- **工具文件**：camelCase（`imageUtils.ts`）
+- **类型文件**：camelCase + `.types.ts`（`ImageViewer.types.ts`）
+- **常量文件**：camelCase + `.constants.ts`（`app.constants.ts`）
+
+### 6. TypeScript 规范
+
+#### 6.1 类型定义
+- 所有 Props、函数参数、返回值都要定义类型
+- 类型定义放在对应的 `.types.ts` 文件中
+- 使用 `interface` 定义对象类型，使用 `type` 定义联合类型或别名
+
+```typescript
+// 好的示例
+export interface ImageViewerProps {
+  images: string[];
+  currentIndex?: number;
+}
+
+export type ImageFormat = 'jpg' | 'png' | 'webp' | 'gif';
+```
+
+#### 6.2 避免使用 `any`
+- 禁止使用 `any` 类型
+- 不确定类型时使用 `unknown`，然后进行类型守卫
+- 使用 `as` 断言时要谨慎，确保类型安全
+
+### 7. 代码质量规范
+
+#### 7.1 代码注释
+- 复杂逻辑必须添加注释说明
+- 函数和组件使用 JSDoc 格式注释
+- 注释要简洁明了，避免冗余
+
+#### 7.2 错误处理
+- 所有异步操作都要有错误处理
+- 使用 try-catch 捕获错误
+- 错误信息要清晰，便于调试
+
+```typescript
+try {
+  const imageData = await loadImage(path);
+  // 处理成功情况
+} catch (error) {
+  console.error('[ImageLoader] 加载图片失败:', error);
+  // 错误处理
+}
+```
+
+#### 7.3 性能优化
+- 使用 `React.memo` 优化组件渲染
+- 使用 `useMemo` 和 `useCallback` 优化计算和函数
+- 图片懒加载：使用 `loading="lazy"` 或自定义懒加载逻辑
+- 大列表使用虚拟滚动（如需要）
+
+### 8. Git 提交规范
+
+#### 8.1 Commit Message 格式
+使用中文编写 commit message，格式如下：
+
+```
+<type>: <subject>
+
+<body>
+```
+
+#### 8.2 Type 类型
+- `feat`: 新功能
+- `fix`: 修复 bug
+- `refactor`: 重构代码
+- `style`: 代码格式调整（不影响功能）
+- `docs`: 文档更新
+- `chore`: 构建/工具链相关
+
+示例：
+```
+feat: 添加图片查看器组件
+fix: 修复图片加载失败的问题
+refactor: 重构图片加载逻辑，提取 useImageLoader Hook
+```
+
+### 9. 禁止事项
+
+#### 9.1 代码规范
+- ❌ 禁止使用嵌套的三元表达式（超过一层）
+- ❌ 禁止使用 `any` 类型
+- ❌ 禁止在组件中直接写复杂业务逻辑（应封装为 Hook）
+- ❌ 禁止使用内联样式（除非是动态计算的值）
+- ❌ 禁止删除代码中的注释（除非用户明确要求）
+
+#### 9.2 开发流程
+- ❌ 禁止在未完成功能时提交代码
+- ❌ 禁止提交包含 console.log 的代码（调试用 console 需要统一标识）
+- ❌ 禁止提交格式化后的代码（除非用户明确要求）
+
+### 10. 调试规范
+
+#### 10.1 Console 日志
+- 调试用的 console 必须使用统一标识前缀
+- 格式：`[模块名] 日志内容`
+- 示例：`[ImageLoader] 开始加载图片`, `[ImageViewer] 切换到下一张`
+
+```typescript
+console.log('[ImageLoader] 开始加载图片:', imagePath);
+console.error('[ImageLoader] 加载失败:', error);
+```
+
+### 11. 项目特定规范
+
+#### 11.1 图片处理
+- 支持常见图片格式：jpg, png, webp, gif
+- 图片路径处理要兼容本地文件和网络 URL
+- 大图片要考虑性能优化（压缩、懒加载）
+
+#### 11.2 文件读取
+- 使用 File API 读取本地文件
+- 文件选择使用 `<input type="file">` 或拖拽上传
+- 文件读取要有错误处理和加载状态
+
+## 总结
+
+遵循以上规范，确保代码：
+- ✅ 结构清晰，易于维护
+- ✅ 组件可复用，逻辑可复用
+- ✅ 样式统一，使用 TailwindCSS
+- ✅ 类型安全，使用 TypeScript
+- ✅ 性能优化，用户体验好
+
