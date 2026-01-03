@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import type { ComicFile, ComicViewerState, ViewMode } from "../types";
+import type { ComicFile, ComicViewerState, ViewMode, ReadingHistory } from "../types";
 import { scanImageFiles, loadImageFile } from "../utils/fileUtils";
 import { saveHistory } from "../utils/historyUtils";
 
@@ -20,16 +20,38 @@ export const useComicViewer = () => {
       const fileList = await scanImageFiles(dirHandle);
 
       setFiles(fileList);
-      setCurrentIndex(0);
-      setZoom(1);
       setFolderName(dirHandle.name);
 
+      // 检查是否有需要恢复的状态
+      const restoreState = sessionStorage.getItem('restoreState');
+      let restoreData: ReadingHistory | null = null;
+
+      if (restoreState) {
+        try {
+          restoreData = JSON.parse(restoreState);
+          sessionStorage.removeItem('restoreState');
+        } catch (error) {
+          console.error('解析恢复状态失败:', error);
+        }
+      }
+
+      // 恢复或设置默认状态
+      const targetIndex = restoreData?.currentIndex || 0;
+      const targetZoom = restoreData?.zoom || 1;
+      const targetViewMode = restoreData?.viewMode || viewMode;
+      const targetImageWidth = restoreData?.imageWidth || imageWidth;
+
+      setCurrentIndex(targetIndex);
+      setZoom(targetZoom);
+      setViewMode(targetViewMode);
+      setImageWidth(targetImageWidth);
+
       if (fileList.length > 0) {
-        const url = await loadImageFile(fileList[0]);
+        const url = await loadImageFile(fileList[targetIndex]);
         setImageUrl(url);
 
         // 如果是滚动模式，预加载所有图片
-        if (viewMode === "scroll") {
+        if (targetViewMode === "scroll") {
           const urls = await Promise.all(
             fileList.map((file) => loadImageFile(file))
           );
@@ -39,7 +61,7 @@ export const useComicViewer = () => {
     } catch (error) {
       console.error("选择文件夹失败:", error);
     }
-  }, [viewMode]);
+  }, [viewMode, imageWidth]);
 
   const loadImage = useCallback(async (file: ComicFile) => {
     try {
@@ -168,6 +190,7 @@ export const useComicViewer = () => {
     }
   }, [viewMode, files, imageUrls.length]);
 
+
   // 保存阅读历史记录
   useEffect(() => {
     if (folderName && files.length > 0) {
@@ -176,9 +199,12 @@ export const useComicViewer = () => {
         currentIndex,
         totalFiles: files.length,
         currentFileName: files[currentIndex]?.name,
+        zoom,
+        viewMode,
+        imageWidth,
       });
     }
-  }, [folderName, files, currentIndex]);
+  }, [folderName, files, currentIndex, zoom, viewMode, imageWidth]);
 
   const state: ComicViewerState = {
     files,

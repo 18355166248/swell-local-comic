@@ -21,4 +21,7 @@ export interface ReadingHistory {
   totalFiles: number;
   lastReadTime: number;
   currentFileName?: string;
+  zoom?: number;
+  viewMode?: ViewMode;
+  imageWidth?: number;
 }

@@ -1,1 +1,24 @@
 @import "tailwindcss";
+
+/* 滚动模式容器自定义滚动条样式 */
+.scroll-mode-container::-webkit-scrollbar {
+  width: 20px; /* 滚动条宽度 */
+  scrollbar-width: auto; /* 滚动条宽度：thin（细）、auto（默认） */
+  scrollbar-color: #888 #f1f1f1; /* 滑块颜色 轨道颜色 */
+  overflow-y: auto;
+  max-height: 300px; /* 示例高度，可根据需要调整 */
+}
+
+.scroll-mode-container::-webkit-scrollbar-track {
+  background: #f1f1f1; /* 轨道背景色 */
+  border-radius: 5px; /* 圆角 */
+}
+
+.scroll-mode-container::-webkit-scrollbar-thumb {
+  background: #888; /* 滑块颜色 */
+  border-radius: 5px; /* 圆角 */
+}
+
+.scroll-mode-container::-webkit-scrollbar-thumb:hover {
+  background: #555; /* 悬停时的滑块颜色 */
+}

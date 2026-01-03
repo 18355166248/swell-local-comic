@@ -34,6 +34,12 @@ export default function History() {
     }
   };
 
+  const handleContinueReading = (history: ReadingHistory) => {
+    // 将历史记录信息存储到 sessionStorage 中，以便 ComicViewer 恢复状态
+    sessionStorage.setItem("continueReading", JSON.stringify(history));
+    navigate("/");
+  };
+
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp);
     const now = new Date();
@@ -97,15 +103,19 @@ export default function History() {
             {histories.map((history) => (
               <div
                 key={history.folderName}
-                className="bg-gray-800 rounded-lg p-4 hover:bg-gray-700 transition-colors"
+                className="bg-gray-800 rounded-lg p-4 hover:bg-gray-700 transition-colors cursor-pointer group"
+                onClick={() => handleContinueReading(history)}
               >
                 <div className="flex items-start justify-between mb-3">
                   <h3 className="text-lg font-semibold truncate flex-1 mr-2">
                     {history.folderName}
                   </h3>
                   <button
-                    onClick={() => handleDelete(history.folderName)}
-                    className="text-red-400 hover:text-red-300 text-sm px-2 py-1 rounded transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(history.folderName);
+                    }}
+                    className="text-red-400 hover:text-red-300 text-sm px-2 py-1 rounded transition-colors opacity-0 group-hover:opacity-100 transition-opacity"
                     title="删除"
                   >
                     ✕
@@ -138,9 +148,20 @@ export default function History() {
                     </p>
                   )}
 
-                  <p className="text-xs text-gray-500">
-                    {formatTime(history.lastReadTime)}
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-gray-500">
+                      {formatTime(history.lastReadTime)}
+                    </p>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleContinueReading(history);
+                      }}
+                      className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-3 py-1 rounded transition-colors opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      继续阅读
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -150,4 +171,3 @@ export default function History() {
     </div>
   );
 }
-
