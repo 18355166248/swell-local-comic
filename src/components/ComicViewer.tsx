@@ -153,7 +153,29 @@ export default function ComicViewer() {
               ? actions.onScrollPositionChange
               : undefined
           }
+          onCurrentImageChange={
+            state.viewMode === "scroll"
+              ? actions.onCurrentImageChange
+              : undefined
+          }
+          isLoading={state.isLoading}
         />
+        {state.isLoading && (
+          <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-50">
+            <div className="bg-gray-800 rounded-lg p-6 text-center">
+              <div className="text-white text-lg mb-4">正在加载图片...</div>
+              <div className="w-64 bg-gray-700 rounded-full h-2 mb-2">
+                <div
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${state.loadingProgress || 0}%` }}
+                />
+              </div>
+              <div className="text-gray-300 text-sm">
+                {state.loadingProgress || 0}% ({state.imageUrls.length} / {state.files.length})
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {state.viewMode === "page" && (

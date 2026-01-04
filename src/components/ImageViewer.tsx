@@ -9,10 +9,12 @@ interface ImageViewerProps {
   viewMode: ViewMode;
   imageWidth: number;
   imageUrls: string[];
-  files: Array<{ name: string }>;
+  files: Array<{ name: string; path: string }>;
   scrollRatio?: number; // 滚动距离比例，默认0.8（80%）
   scrollPosition?: number; // 初始滚动位置
   onScrollPositionChange?: (position: number, height: number) => void; // 滚动位置变化回调，包含位置和总高度
+  onCurrentImageChange?: (index: number) => void; // 当前可见图片索引变化回调
+  isLoading?: boolean; // 是否正在加载
 }
 
 export default function ImageViewer({
@@ -27,6 +29,8 @@ export default function ImageViewer({
   scrollRatio = 0.8,
   scrollPosition,
   onScrollPositionChange,
+  onCurrentImageChange,
+  isLoading = false,
 }: ImageViewerProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollIntervalRef = useRef<number | null>(null);
@@ -185,6 +189,65 @@ export default function ImageViewer({
     };
   }, [viewMode, scrollRatio]);
 
+  // 检测当前可见的图片索引（滚动模式）
+  useEffect(() => {
+    if (
+      viewMode !== "scroll" ||
+      !onCurrentImageChange ||
+      imageUrls.length === 0
+    ) {
+      return;
+    }
+
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const images = container.querySelectorAll("img");
+    if (images.length === 0) return;
+
+    let scrollTimeout: number;
+    const handleScroll = () => {
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        const containerRect = container.getBoundingClientRect();
+        const containerTop = containerRect.top;
+        const viewportCenter = containerTop + container.clientHeight / 2;
+
+        let currentIndex = 0;
+        let minDistance = Infinity;
+
+        images.forEach((img, index) => {
+          const imgRect = img.getBoundingClientRect();
+          const imgCenter = imgRect.top + imgRect.height / 2;
+          const distance = Math.abs(imgCenter - viewportCenter);
+
+          // 如果图片在视口内，或者距离视口中心最近
+          if (
+            (imgRect.top <= viewportCenter &&
+              imgRect.bottom >= viewportCenter) ||
+            distance < minDistance
+          ) {
+            if (distance < minDistance) {
+              minDistance = distance;
+              currentIndex = index;
+            }
+          }
+        });
+
+        onCurrentImageChange(currentIndex);
+      }, 100); // 防抖100ms
+    };
+
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    // 初始检测一次
+    handleScroll();
+
+    return () => {
+      clearTimeout(scrollTimeout);
+      container.removeEventListener("scroll", handleScroll);
+    };
+  }, [viewMode, imageUrls.length, onCurrentImageChange, imageWidth, zoom]);
+
   if (!imageUrl && imageUrls.length === 0) {
     return (
       <div className="h-full flex items-center justify-center text-gray-400">
@@ -204,8 +267,12 @@ export default function ImageViewer({
         <div
           ref={scrollContainerRef}
           className="h-full overflow-y-auto overflow-x-hidden scroll-mode-container"
-          onWheel={onWheel}
-          style={{ scrollBehavior: "smooth" }}
+          onWheel={isLoading ? undefined : onWheel}
+          style={{ 
+            scrollBehavior: "smooth",
+            pointerEvents: isLoading ? "none" : "auto",
+            opacity: isLoading ? 0.5 : 1,
+          }}
         >
           <div className="flex flex-col items-center py-4 space-y-0">
             {imageUrls.map((url, index) => (

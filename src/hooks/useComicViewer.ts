@@ -23,6 +23,8 @@ export const useComicViewer = () => {
   const [folderName, setFolderName] = useState<string>("");
   const [scrollPosition, setScrollPosition] = useState<number>(0);
   const [scrollHeight, setScrollHeight] = useState<number>(0);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [loadingProgress, setLoadingProgress] = useState<number>(0);
 
   const handleFolderSelect = useCallback(async () => {
     try {
@@ -65,11 +67,37 @@ export const useComicViewer = () => {
             ) {
               setImageUrls(history.imageUrls);
             } else if (targetViewMode === "scroll") {
-              // 否则重新加载所有图片
-              const urls = await Promise.all(
-                history.files.map((file) => loadImageFile(file))
-              );
-              setImageUrls(urls);
+              // 否则分批加载所有图片
+              const batchSize = 10;
+              const loadImagesInBatches = async () => {
+                setIsLoading(true);
+                setLoadingProgress(0);
+                const urls: string[] = [];
+                for (let i = 0; i < history.files.length; i += batchSize) {
+                  const batch = history.files.slice(i, i + batchSize);
+                  const batchUrls = await Promise.all(
+                    batch.map((file) => loadImageFile(file))
+                  );
+                  urls.push(...batchUrls);
+                  setImageUrls([...urls]);
+                  const progress = Math.round(
+                    ((i + batchSize) / history.files.length) * 100
+                  );
+                  setLoadingProgress(Math.min(progress, 100));
+                  await new Promise((resolve) => {
+                    if (typeof requestIdleCallback !== "undefined") {
+                      requestIdleCallback(() => resolve(undefined), {
+                        timeout: 100,
+                      });
+                    } else {
+                      setTimeout(() => resolve(undefined), 0);
+                    }
+                  });
+                }
+                setIsLoading(false);
+                setLoadingProgress(100);
+              };
+              loadImagesInBatches();
             }
           }
 
@@ -118,12 +146,41 @@ export const useComicViewer = () => {
         const url = await loadImageFile(fileList[targetIndex]);
         setImageUrl(url);
 
-        // 如果是滚动模式，预加载所有图片
+        // 如果是滚动模式，分批加载所有图片
         if (targetViewMode === "scroll") {
-          const urls = await Promise.all(
-            fileList.map((file) => loadImageFile(file))
-          );
-          setImageUrls(urls);
+          // 分批加载图片，避免一次性加载导致卡死
+          const batchSize = 10; // 每批加载10张图片
+          const loadImagesInBatches = async () => {
+            setIsLoading(true);
+            setLoadingProgress(0);
+            const urls: string[] = [];
+            for (let i = 0; i < fileList.length; i += batchSize) {
+              const batch = fileList.slice(i, i + batchSize);
+              const batchUrls = await Promise.all(
+                batch.map((file) => loadImageFile(file))
+              );
+              urls.push(...batchUrls);
+              // 每批加载后更新一次状态，让用户看到进度
+              setImageUrls([...urls]);
+              const progress = Math.round(
+                ((i + batchSize) / fileList.length) * 100
+              );
+              setLoadingProgress(Math.min(progress, 100));
+              // 使用 requestIdleCallback 或 setTimeout 让浏览器有机会渲染
+              await new Promise((resolve) => {
+                if (typeof requestIdleCallback !== "undefined") {
+                  requestIdleCallback(() => resolve(undefined), {
+                    timeout: 100,
+                  });
+                } else {
+                  setTimeout(() => resolve(undefined), 0);
+                }
+              });
+            }
+            setIsLoading(false);
+            setLoadingProgress(100);
+          };
+          loadImagesInBatches();
         }
       }
     } catch (error) {
@@ -210,10 +267,34 @@ export const useComicViewer = () => {
     const newMode: ViewMode = viewMode === "page" ? "scroll" : "page";
     setViewMode(newMode);
 
-    // 切换到滚动模式时，加载所有图片
+    // 切换到滚动模式时，分批加载所有图片
     if (newMode === "scroll" && files.length > 0 && imageUrls.length === 0) {
-      const urls = await Promise.all(files.map((file) => loadImageFile(file)));
-      setImageUrls(urls);
+      const batchSize = 10;
+      setIsLoading(true);
+      setLoadingProgress(0);
+      const loadImagesInBatches = async () => {
+        const urls: string[] = [];
+        for (let i = 0; i < files.length; i += batchSize) {
+          const batch = files.slice(i, i + batchSize);
+          const batchUrls = await Promise.all(
+            batch.map((file) => loadImageFile(file))
+          );
+          urls.push(...batchUrls);
+          setImageUrls([...urls]);
+          const progress = Math.round(((i + batchSize) / files.length) * 100);
+          setLoadingProgress(Math.min(progress, 100));
+          await new Promise((resolve) => {
+            if (typeof requestIdleCallback !== "undefined") {
+              requestIdleCallback(() => resolve(undefined), { timeout: 100 });
+            } else {
+              setTimeout(() => resolve(undefined), 0);
+            }
+          });
+        }
+        setIsLoading(false);
+        setLoadingProgress(100);
+      };
+      loadImagesInBatches();
     }
   }, [viewMode, files, imageUrls.length]);
 
@@ -249,12 +330,35 @@ export const useComicViewer = () => {
     [viewMode, zoomIn, zoomOut]
   );
 
-  // 视图模式切换时，加载所有图片
+  // 视图模式切换时，分批加载所有图片
   useEffect(() => {
     if (viewMode === "scroll" && files.length > 0 && imageUrls.length === 0) {
-      Promise.all(files.map((file) => loadImageFile(file))).then((urls) => {
-        setImageUrls(urls);
-      });
+      const batchSize = 10;
+      const loadImagesInBatches = async () => {
+        setIsLoading(true);
+        setLoadingProgress(0);
+        const urls: string[] = [];
+        for (let i = 0; i < files.length; i += batchSize) {
+          const batch = files.slice(i, i + batchSize);
+          const batchUrls = await Promise.all(
+            batch.map((file) => loadImageFile(file))
+          );
+          urls.push(...batchUrls);
+          setImageUrls([...urls]);
+          const progress = Math.round(((i + batchSize) / files.length) * 100);
+          setLoadingProgress(Math.min(progress, 100));
+          await new Promise((resolve) => {
+            if (typeof requestIdleCallback !== "undefined") {
+              requestIdleCallback(() => resolve(undefined), { timeout: 100 });
+            } else {
+              setTimeout(() => resolve(undefined), 0);
+            }
+          });
+        }
+        setIsLoading(false);
+        setLoadingProgress(100);
+      };
+      loadImagesInBatches();
     }
   }, [viewMode, files, imageUrls.length]);
 
@@ -288,6 +392,7 @@ export const useComicViewer = () => {
     imageWidth,
     imageUrls,
     scrollPosition,
+    scrollHeight,
   ]);
 
   const state: ComicViewerState = {
@@ -300,6 +405,8 @@ export const useComicViewer = () => {
     imageUrls,
     scrollPosition,
     scrollHeight,
+    isLoading,
+    loadingProgress,
   };
 
   return {
@@ -323,6 +430,12 @@ export const useComicViewer = () => {
       onScrollPositionChange: (position: number, height: number) => {
         setScrollPosition(position);
         setScrollHeight(height);
+      },
+      onCurrentImageChange: (index: number) => {
+        // 滚动模式下更新当前图片索引
+        if (viewMode === "scroll") {
+          setCurrentIndex(index);
+        }
       },
     },
   };

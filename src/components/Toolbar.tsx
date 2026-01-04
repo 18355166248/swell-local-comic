@@ -49,7 +49,18 @@ export default function Toolbar({
         </button>
         {totalFiles > 0 && (
           <span className="text-sm text-gray-300">
-            {currentIndex + 1} / {totalFiles} - {currentFileName}
+            {viewMode === "scroll" ? (
+              <>
+                <span className="mr-4 text-amber-300">
+                  当前: {currentIndex + 1} / {totalFiles} 页
+                </span>
+                <span className="text-blue-500">文件: {currentFileName}</span>
+              </>
+            ) : (
+              <>
+                {currentIndex + 1} / {totalFiles} - {currentFileName}
+              </>
+            )}
           </span>
         )}
       </div>
