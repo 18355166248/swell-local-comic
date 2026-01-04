@@ -171,7 +171,8 @@ export default function ComicViewer() {
                 />
               </div>
               <div className="text-gray-300 text-sm">
-                {state.loadingProgress || 0}% ({state.imageUrls.length} / {state.files.length})
+                {state.loadingProgress || 0}% ({state.imageUrls.length} /{" "}
+                {state.files.length})
               </div>
             </div>
           </div>
