@@ -1,6 +1,6 @@
 export interface ComicFile {
   name: string;
-  handle: FileSystemFileHandle;
+  path: string;
 }
 
 export type ViewMode = 'page' | 'scroll';
@@ -24,4 +24,14 @@ export interface ReadingHistory {
   zoom?: number;
   viewMode?: ViewMode;
   imageWidth?: number;
+}
+
+export interface FolderInfo {
+  name: string;
+  path: string;
+}
+
+export interface ImageFileInfo {
+  name: string;
+  path: string;
 }

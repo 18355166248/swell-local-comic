@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import type { ComicFile, ComicViewerState, ViewMode, ReadingHistory } from "../types";
-import { scanImageFiles, loadImageFile } from "../utils/fileUtils";
+import { selectFolder, scanImageFiles, loadImageFile } from "../utils/fileUtils";
 import { saveHistory } from "../utils/historyUtils";
 
 export const useComicViewer = () => {
@@ -15,12 +15,13 @@ export const useComicViewer = () => {
 
   const handleFolderSelect = useCallback(async () => {
     try {
-      // @ts-ignore - File System Access API
-      const dirHandle = await window.showDirectoryPicker();
-      const fileList = await scanImageFiles(dirHandle);
+      const folderInfo = await selectFolder();
+      if (!folderInfo) return;
+
+      const fileList = await scanImageFiles(folderInfo.path);
 
       setFiles(fileList);
-      setFolderName(dirHandle.name);
+      setFolderName(folderInfo.name);
 
       // 检查是否有需要恢复的状态
       const restoreState = sessionStorage.getItem('restoreState');

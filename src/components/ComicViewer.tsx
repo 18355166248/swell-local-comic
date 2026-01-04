@@ -7,38 +7,37 @@ import type { ReadingHistory } from "../types";
 
 export default function ComicViewer() {
   const { state, actions } = useComicViewer();
-  const [restoreHistory, setRestoreHistory] = useState<ReadingHistory | null>(null);
+  const [restoreHistory, setRestoreHistory] = useState<ReadingHistory | null>(
+    null
+  );
 
   useEffect(() => {
     // 检查是否有需要恢复的历史记录
-    const continueReading = sessionStorage.getItem('continueReading');
+    const continueReading = sessionStorage.getItem("continueReading");
     if (continueReading) {
       try {
         const history: ReadingHistory = JSON.parse(continueReading);
         setRestoreHistory(history);
       } catch (error) {
-        console.error('解析历史记录失败:', error);
-        sessionStorage.removeItem('continueReading');
+        console.error("解析历史记录失败:", error);
+        sessionStorage.removeItem("continueReading");
       }
     }
   }, []);
 
   const handleFolderSelect = async () => {
     try {
-      // @ts-ignore - File System Access API
-      const dirHandle = await window.showDirectoryPicker();
-
-      if (restoreHistory && dirHandle.name === restoreHistory.folderName) {
-        // 如果是恢复的历史记录，设置一个标志来恢复状态
-        sessionStorage.setItem('restoreState', JSON.stringify(restoreHistory));
-        sessionStorage.removeItem('continueReading');
+      if (restoreHistory) {
+        // 如果有恢复的历史记录，设置一个标志来恢复状态
+        sessionStorage.setItem("restoreState", JSON.stringify(restoreHistory));
+        sessionStorage.removeItem("continueReading");
         setRestoreHistory(null);
       }
 
-      // 调用原始的文件夹选择逻辑
+      // 调用文件夹选择逻辑
       await actions.handleFolderSelect();
     } catch (error) {
-      console.error('选择文件夹失败:', error);
+      console.error("选择文件夹失败:", error);
     }
   };
 
@@ -47,11 +46,12 @@ export default function ComicViewer() {
       {/* 恢复提示 */}
       {restoreHistory && (
         <div className="bg-blue-600 text-white px-4 py-2 text-center text-sm">
-          从历史记录恢复: {restoreHistory.folderName} - 第 {restoreHistory.currentIndex + 1} 页
+          从历史记录恢复: {restoreHistory.folderName} - 第{" "}
+          {restoreHistory.currentIndex + 1} 页
           <button
             onClick={() => {
               setRestoreHistory(null);
-              sessionStorage.removeItem('continueReading');
+              sessionStorage.removeItem("continueReading");
             }}
             className="ml-4 text-blue-200 hover:text-white"
           >
