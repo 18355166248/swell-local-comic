@@ -41,7 +41,8 @@ export default function History() {
     if (history.folderPath) {
       sessionStorage.setItem("currentFolderPath", history.folderPath);
     }
-    navigate("/");
+    // 携带参数表示是从继续阅读跳转过来的
+    navigate("/?fromContinueReading=true");
   };
 
   const formatTime = (timestamp: number) => {

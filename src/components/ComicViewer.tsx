@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "react-router";
 import { useComicViewer } from "../hooks/useComicViewer";
 import Toolbar from "./Toolbar";
 import ImageViewer from "./ImageViewer";
@@ -7,9 +8,11 @@ import type { ReadingHistory } from "../types";
 
 export default function ComicViewer() {
   const { state, actions } = useComicViewer();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [restoreHistory, setRestoreHistory] = useState<ReadingHistory | null>(
     null
   );
+  const hasProcessedContinueReading = useRef(false);
 
   useEffect(() => {
     // 检查是否有需要恢复的历史记录
@@ -29,13 +32,14 @@ export default function ComicViewer() {
     }
   }, []);
 
-  const handleFolderSelect = async () => {
+  const handleFolderSelect = useCallback(async () => {
     try {
       if (restoreHistory) {
         // 如果有恢复的历史记录，设置一个标志来恢复状态
         sessionStorage.setItem("restoreState", JSON.stringify(restoreHistory));
         sessionStorage.removeItem("continueReading");
         setRestoreHistory(null);
+        return;
       }
 
       // 调用文件夹选择逻辑
@@ -43,7 +47,57 @@ export default function ComicViewer() {
     } catch (error) {
       console.error("选择文件夹失败:", error);
     }
-  };
+  }, [restoreHistory, actions]);
+
+  useEffect(() => {
+    // 判断如果是从继续阅读过来的，主动执行 handleFolderSelect
+    const fromContinueReading = searchParams.get("fromContinueReading");
+
+    // 如果查询参数变化了（从 true 变为其他值），重置标志
+    if (fromContinueReading !== "true") {
+      hasProcessedContinueReading.current = false;
+      return;
+    }
+
+    if (
+      fromContinueReading === "true" &&
+      !hasProcessedContinueReading.current
+    ) {
+      // 标记为已处理，防止重复执行
+      hasProcessedContinueReading.current = true;
+
+      // 先执行逻辑，再移除查询参数，避免触发重复执行
+      const executeContinueReading = async () => {
+        // 检查是否有完整的历史记录可以直接恢复
+        const continueReading = sessionStorage.getItem("continueReading");
+        if (continueReading) {
+          try {
+            const history: ReadingHistory = JSON.parse(continueReading);
+            // 如果历史记录包含完整的文件列表，直接设置 directRestore，不需要选择文件夹
+            if (history.files && history.files.length > 0) {
+              sessionStorage.setItem("directRestore", JSON.stringify(history));
+              sessionStorage.removeItem("continueReading");
+              setRestoreHistory(null);
+              // 直接调用 handleFolderSelect，它会检测到 directRestore 并直接恢复
+              await actions.handleFolderSelect();
+              // 移除查询参数
+              setSearchParams({});
+              return;
+            }
+          } catch (error) {
+            console.error("解析历史记录失败:", error);
+          }
+        }
+
+        // 如果没有完整的历史记录，需要执行文件夹选择
+        await handleFolderSelect();
+        // 移除查询参数
+        setSearchParams({});
+      };
+
+      executeContinueReading();
+    }
+  }, [searchParams.toString(), setSearchParams, handleFolderSelect, actions]);
 
   return (
     <div className="h-screen bg-gray-900 flex flex-col">
