@@ -11,6 +11,8 @@ interface ImageViewerProps {
   imageUrls: string[];
   files: Array<{ name: string }>;
   scrollRatio?: number; // 滚动距离比例，默认0.8（80%）
+  scrollPosition?: number; // 初始滚动位置
+  onScrollPositionChange?: (position: number, height: number) => void; // 滚动位置变化回调，包含位置和总高度
 }
 
 export default function ImageViewer({
@@ -23,10 +25,52 @@ export default function ImageViewer({
   imageUrls,
   files,
   scrollRatio = 0.8,
+  scrollPosition,
+  onScrollPositionChange,
 }: ImageViewerProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollIntervalRef = useRef<number | null>(null);
   const pressedKeyRef = useRef<string | null>(null);
+
+  // 监听滚动位置变化
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || viewMode !== "scroll" || !onScrollPositionChange) return;
+
+    let scrollTimeout: number;
+
+    const handleScroll = () => {
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        onScrollPositionChange(container.scrollTop, container.scrollHeight);
+      }, 300); // 防抖300ms
+    };
+
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      clearTimeout(scrollTimeout);
+      container.removeEventListener("scroll", handleScroll);
+    };
+  }, [viewMode, onScrollPositionChange]);
+
+  // 设置初始滚动位置
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (container && viewMode === "scroll" && scrollPosition !== undefined) {
+      // 临时禁用平滑滚动，设置初始位置
+      const originalScrollBehavior = container.style.scrollBehavior;
+      container.style.scrollBehavior = "auto";
+
+      // 延迟设置，确保内容已渲染
+      setTimeout(() => {
+        container.scrollTop = scrollPosition;
+        // 恢复平滑滚动
+        setTimeout(() => {
+          container.style.scrollBehavior = originalScrollBehavior;
+        }, 100);
+      }, 100);
+    }
+  }, [viewMode, scrollPosition, imageUrls.length]);
 
   // 滚动处理函数
   const handleScrollUp = () => {
@@ -163,7 +207,7 @@ export default function ImageViewer({
           onWheel={onWheel}
           style={{ scrollBehavior: "smooth" }}
         >
-          <div className="flex flex-col items-center py-4 space-y-4">
+          <div className="flex flex-col items-center py-4 space-y-0">
             {imageUrls.map((url, index) => (
               <img
                 key={index}

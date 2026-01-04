@@ -20,9 +20,9 @@ export default function History() {
     setHistories(allHistories);
   };
 
-  const handleDelete = (folderName: string) => {
+  const handleDelete = (folderPath: string, folderName: string) => {
     if (confirm(`确定要删除 "${folderName}" 的阅读历史吗？`)) {
-      deleteHistory(folderName);
+      deleteHistory(folderPath);
       loadHistories();
     }
   };
@@ -37,6 +37,10 @@ export default function History() {
   const handleContinueReading = (history: ReadingHistory) => {
     // 将历史记录信息存储到 sessionStorage 中，以便 ComicViewer 恢复状态
     sessionStorage.setItem("continueReading", JSON.stringify(history));
+    // 如果历史记录包含完整的文件夹信息，直接设置当前文件夹路径
+    if (history.folderPath) {
+      sessionStorage.setItem("currentFolderPath", history.folderPath);
+    }
     navigate("/");
   };
 
@@ -60,9 +64,38 @@ export default function History() {
     return "刚刚";
   };
 
-  const getProgress = (currentIndex: number, totalFiles: number) => {
-    if (totalFiles === 0) return 0;
-    return Math.round(((currentIndex + 1) / totalFiles) * 100);
+  const getProgress = (history: ReadingHistory) => {
+    if (history.viewMode === "scroll" && history.scrollPosition !== undefined) {
+      // 滚动模式：计算滚动进度
+      if (history.scrollHeight && history.scrollHeight > 0) {
+        const progress = Math.min(
+          Math.round((history.scrollPosition / history.scrollHeight) * 100),
+          100
+        );
+        return {
+          type: "scroll",
+          progress,
+          position: history.scrollPosition,
+          height: history.scrollHeight,
+        };
+      } else {
+        // 如果没有高度信息，显示位置信息
+        return {
+          type: "scroll",
+          progress: 0,
+          position: history.scrollPosition,
+        };
+      }
+    } else {
+      // 分页模式：显示页面进度
+      if (history.totalFiles === 0) return { type: "page", progress: 0 };
+      return {
+        type: "page",
+        progress: Math.round(
+          ((history.currentIndex + 1) / history.totalFiles) * 100
+        ),
+      };
+    }
   };
 
   return (
@@ -113,7 +146,7 @@ export default function History() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDelete(history.folderName);
+                      handleDelete(history.folderPath, history.folderName);
                     }}
                     className="text-red-400 hover:text-red-300 text-sm px-2 py-1 rounded transition-colors opacity-0 group-hover:opacity-100 transition-opacity"
                     title="删除"
@@ -126,7 +159,20 @@ export default function History() {
                   <div className="flex items-center justify-between text-sm text-gray-300">
                     <span>阅读进度</span>
                     <span>
-                      {history.currentIndex + 1} / {history.totalFiles}
+                      {(() => {
+                        const progressInfo = getProgress(history);
+                        if (progressInfo.type === "scroll") {
+                          if (progressInfo.progress > 0) {
+                            return `${progressInfo.progress}% (${progressInfo.position}px)`;
+                          } else {
+                            return `滚动位置: ${progressInfo.position}px`;
+                          }
+                        } else {
+                          return `${history.currentIndex + 1} / ${
+                            history.totalFiles
+                          }`;
+                        }
+                      })()}
                     </span>
                   </div>
 
@@ -134,10 +180,16 @@ export default function History() {
                     <div
                       className="bg-blue-600 h-2 rounded-full transition-all"
                       style={{
-                        width: `${getProgress(
-                          history.currentIndex,
-                          history.totalFiles
-                        )}%`,
+                        width: (() => {
+                          const progressInfo = getProgress(history);
+                          if (progressInfo.type === "scroll") {
+                            return progressInfo.progress > 0
+                              ? `${progressInfo.progress}%`
+                              : "100%";
+                          } else {
+                            return `${progressInfo.progress}%`;
+                          }
+                        })(),
                       }}
                     />
                   </div>

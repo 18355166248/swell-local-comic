@@ -1,6 +1,15 @@
 import { useState, useCallback, useEffect } from "react";
-import type { ComicFile, ComicViewerState, ViewMode, ReadingHistory } from "../types";
-import { selectFolder, scanImageFiles, loadImageFile } from "../utils/fileUtils";
+import type {
+  ComicFile,
+  ComicViewerState,
+  ViewMode,
+  ReadingHistory,
+} from "../types";
+import {
+  selectFolder,
+  scanImageFiles,
+  loadImageFile,
+} from "../utils/fileUtils";
 import { saveHistory } from "../utils/historyUtils";
 
 export const useComicViewer = () => {
@@ -9,12 +18,68 @@ export const useComicViewer = () => {
   const [zoom, setZoom] = useState(1);
   const [imageUrl, setImageUrl] = useState<string>("");
   const [viewMode, setViewMode] = useState<ViewMode>("scroll");
-  const [imageWidth, setImageWidth] = useState<number>(400);
+  const [imageWidth, setImageWidth] = useState<number>(600);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [folderName, setFolderName] = useState<string>("");
+  const [scrollPosition, setScrollPosition] = useState<number>(0);
+  const [scrollHeight, setScrollHeight] = useState<number>(0);
 
   const handleFolderSelect = useCallback(async () => {
     try {
+      // 检查是否有直接恢复的历史记录
+      const directRestore = sessionStorage.getItem("directRestore");
+      if (directRestore) {
+        try {
+          const history: ReadingHistory = JSON.parse(directRestore);
+          sessionStorage.removeItem("directRestore");
+
+          // 直接使用历史记录中的文件列表
+          setFiles(history.files);
+          setFolderName(history.folderName);
+          sessionStorage.setItem("currentFolderPath", history.folderPath);
+
+          // 恢复阅读状态
+          const targetIndex = history.currentIndex || 0;
+          const targetZoom = history.zoom || 1;
+          const targetViewMode = history.viewMode || viewMode;
+          const targetImageWidth = history.imageWidth || imageWidth;
+          const targetScrollPosition = history.scrollPosition || 0;
+          const targetScrollHeight = history.scrollHeight || 0;
+
+          setCurrentIndex(targetIndex);
+          setZoom(targetZoom);
+          setViewMode(targetViewMode);
+          setImageWidth(targetImageWidth);
+          setScrollPosition(targetScrollPosition);
+          setScrollHeight(targetScrollHeight);
+
+          if (history.files.length > 0) {
+            const url = await loadImageFile(history.files[targetIndex]);
+            setImageUrl(url);
+
+            // 如果是滚动模式，恢复图片URLs
+            if (
+              targetViewMode === "scroll" &&
+              history.imageUrls &&
+              history.imageUrls.length > 0
+            ) {
+              setImageUrls(history.imageUrls);
+            } else if (targetViewMode === "scroll") {
+              // 否则重新加载所有图片
+              const urls = await Promise.all(
+                history.files.map((file) => loadImageFile(file))
+              );
+              setImageUrls(urls);
+            }
+          }
+
+          return;
+        } catch (error) {
+          console.error("直接恢复历史记录失败:", error);
+          sessionStorage.removeItem("directRestore");
+        }
+      }
+
       const folderInfo = await selectFolder();
       if (!folderInfo) return;
 
@@ -22,17 +87,19 @@ export const useComicViewer = () => {
 
       setFiles(fileList);
       setFolderName(folderInfo.name);
+      // 保存文件夹路径到sessionStorage，用于历史记录
+      sessionStorage.setItem("currentFolderPath", folderInfo.path);
 
       // 检查是否有需要恢复的状态
-      const restoreState = sessionStorage.getItem('restoreState');
+      const restoreState = sessionStorage.getItem("restoreState");
       let restoreData: ReadingHistory | null = null;
 
       if (restoreState) {
         try {
           restoreData = JSON.parse(restoreState);
-          sessionStorage.removeItem('restoreState');
+          sessionStorage.removeItem("restoreState");
         } catch (error) {
-          console.error('解析恢复状态失败:', error);
+          console.error("解析恢复状态失败:", error);
         }
       }
 
@@ -191,21 +258,37 @@ export const useComicViewer = () => {
     }
   }, [viewMode, files, imageUrls.length]);
 
-
   // 保存阅读历史记录
   useEffect(() => {
     if (folderName && files.length > 0) {
+      // 获取文件夹路径（从sessionStorage或通过其他方式获取）
+      const folderPath = sessionStorage.getItem("currentFolderPath") || "";
+
       saveHistory({
         folderName,
+        folderPath,
+        files,
         currentIndex,
         totalFiles: files.length,
         currentFileName: files[currentIndex]?.name,
         zoom,
         viewMode,
         imageWidth,
+        scrollPosition: viewMode === "scroll" ? scrollPosition : undefined,
+        scrollHeight: viewMode === "scroll" ? scrollHeight : undefined,
+        imageUrls: viewMode === "scroll" ? imageUrls : undefined,
       });
     }
-  }, [folderName, files, currentIndex, zoom, viewMode, imageWidth]);
+  }, [
+    folderName,
+    files,
+    currentIndex,
+    zoom,
+    viewMode,
+    imageWidth,
+    imageUrls,
+    scrollPosition,
+  ]);
 
   const state: ComicViewerState = {
     files,
@@ -215,6 +298,8 @@ export const useComicViewer = () => {
     viewMode,
     imageWidth,
     imageUrls,
+    scrollPosition,
+    scrollHeight,
   };
 
   return {
@@ -234,6 +319,10 @@ export const useComicViewer = () => {
           setCurrentIndex(index);
           loadImage(files[index]);
         }
+      },
+      onScrollPositionChange: (position: number, height: number) => {
+        setScrollPosition(position);
+        setScrollHeight(height);
       },
     },
   };

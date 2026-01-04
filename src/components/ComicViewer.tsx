@@ -18,6 +18,10 @@ export default function ComicViewer() {
       try {
         const history: ReadingHistory = JSON.parse(continueReading);
         setRestoreHistory(history);
+        // 如果历史记录包含完整的文件列表，可以直接恢复
+        if (history.files && history.files.length > 0) {
+          sessionStorage.setItem("directRestore", JSON.stringify(history));
+        }
       } catch (error) {
         console.error("解析历史记录失败:", error);
         sessionStorage.removeItem("continueReading");
@@ -85,6 +89,16 @@ export default function ComicViewer() {
           imageWidth={state.imageWidth}
           imageUrls={state.imageUrls}
           files={state.files}
+          scrollPosition={
+            state.viewMode === "scroll"
+              ? (state as any).scrollPosition
+              : undefined
+          }
+          onScrollPositionChange={
+            state.viewMode === "scroll"
+              ? actions.onScrollPositionChange
+              : undefined
+          }
         />
       </div>
 
