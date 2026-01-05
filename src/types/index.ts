@@ -3,7 +3,7 @@ export interface ComicFile {
   path: string;
 }
 
-export type ViewMode = 'page' | 'scroll';
+export type ViewMode = "page" | "scroll";
 
 export interface ComicViewerState {
   files: ComicFile[];
