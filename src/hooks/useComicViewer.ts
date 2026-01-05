@@ -434,12 +434,7 @@ export const useComicViewer = () => {
         }
       },
       onScrollPositionChange: (position: number, height: number) => {
-        console.log(
-          "[useComicViewer] 设置滚动位置 - position:",
-          position,
-          "height:",
-          height
-        );
+        // 简化：直接更新位置和高度，不做复杂判断
         setScrollPosition(position);
         setScrollHeight(height);
       },
