@@ -1,4 +1,4 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useCallback } from "react";
 import type { ViewMode } from "../types";
 
 interface ImageViewerProps {
@@ -44,10 +44,22 @@ export default function ImageViewer({
     let scrollTimeout: number;
 
     const handleScroll = () => {
+      console.log(
+        "[ImageViewer] 滚动事件触发 - scrollTop:",
+        container.scrollTop,
+        "scrollHeight:",
+        container.scrollHeight
+      );
       clearTimeout(scrollTimeout);
       scrollTimeout = setTimeout(() => {
+        console.log(
+          "[ImageViewer] 更新滚动位置 - position:",
+          container.scrollTop,
+          "height:",
+          container.scrollHeight
+        );
         onScrollPositionChange(container.scrollTop, container.scrollHeight);
-      }, 300); // 防抖300ms
+      }, 100); // 减少防抖时间到100ms，提高响应性
     };
 
     container.addEventListener("scroll", handleScroll, { passive: true });
@@ -61,23 +73,31 @@ export default function ImageViewer({
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (container && viewMode === "scroll" && scrollPosition !== undefined) {
+      console.log(
+        "[ImageViewer] 设置初始滚动位置 - scrollPosition:",
+        scrollPosition
+      );
       // 临时禁用平滑滚动，设置初始位置
       const originalScrollBehavior = container.style.scrollBehavior;
       container.style.scrollBehavior = "auto";
 
       // 延迟设置，确保内容已渲染
       setTimeout(() => {
+        console.log(
+          "[ImageViewer] 应用初始滚动位置 - 设置 scrollTop 为:",
+          scrollPosition
+        );
         container.scrollTop = scrollPosition;
         // 恢复平滑滚动
         setTimeout(() => {
           container.style.scrollBehavior = originalScrollBehavior;
         }, 100);
-      }, 100);
+      }, 200); // 稍微增加延迟，确保内容完全渲染
     }
   }, [viewMode, scrollPosition, imageUrls.length]);
 
   // 滚动处理函数
-  const handleScrollUp = () => {
+  const handleScrollUp = useCallback(() => {
     if (scrollContainerRef.current) {
       const containerHeight = scrollContainerRef.current.clientHeight;
       const scrollDistance = containerHeight * scrollRatio;
@@ -86,9 +106,9 @@ export default function ImageViewer({
         behavior: "smooth",
       });
     }
-  };
+  }, [scrollRatio]);
 
-  const handleScrollDown = () => {
+  const handleScrollDown = useCallback(() => {
     if (scrollContainerRef.current) {
       const containerHeight = scrollContainerRef.current.clientHeight;
       const scrollDistance = containerHeight * scrollRatio;
@@ -97,7 +117,7 @@ export default function ImageViewer({
         behavior: "smooth",
       });
     }
-  };
+  }, [scrollRatio]);
 
   // 停止滚动
   const stopScrolling = () => {
@@ -187,7 +207,7 @@ export default function ImageViewer({
       window.removeEventListener("blur", handleBlur);
       stopScrolling();
     };
-  }, [viewMode, scrollRatio]);
+  }, [viewMode, scrollRatio, handleScrollUp, handleScrollDown]);
 
   // 检测当前可见的图片索引（滚动模式）
   useEffect(() => {

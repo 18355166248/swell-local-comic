@@ -20,6 +20,7 @@ export default function ComicViewer() {
     if (continueReading) {
       try {
         const history: ReadingHistory = JSON.parse(continueReading);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setRestoreHistory(history);
         // 如果历史记录包含完整的文件列表，可以直接恢复
         if (history.files && history.files.length > 0) {
@@ -97,7 +98,7 @@ export default function ComicViewer() {
 
       executeContinueReading();
     }
-  }, [searchParams.toString(), setSearchParams, handleFolderSelect, actions]);
+  }, [searchParams, setSearchParams, handleFolderSelect, actions]);
 
   return (
     <div className="h-screen bg-gray-900 flex flex-col">
@@ -144,9 +145,7 @@ export default function ComicViewer() {
           imageUrls={state.imageUrls}
           files={state.files}
           scrollPosition={
-            state.viewMode === "scroll"
-              ? (state as any).scrollPosition
-              : undefined
+            state.viewMode === "scroll" ? state.scrollPosition : undefined
           }
           onScrollPositionChange={
             state.viewMode === "scroll"

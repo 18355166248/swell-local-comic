@@ -52,6 +52,12 @@ export const useComicViewer = () => {
           setZoom(targetZoom);
           setViewMode(targetViewMode);
           setImageWidth(targetImageWidth);
+          console.log(
+            "[useComicViewer] 恢复滚动位置 - position:",
+            targetScrollPosition,
+            "height:",
+            targetScrollHeight
+          );
           setScrollPosition(targetScrollPosition);
           setScrollHeight(targetScrollHeight);
 
@@ -428,6 +434,12 @@ export const useComicViewer = () => {
         }
       },
       onScrollPositionChange: (position: number, height: number) => {
+        console.log(
+          "[useComicViewer] 设置滚动位置 - position:",
+          position,
+          "height:",
+          height
+        );
         setScrollPosition(position);
         setScrollHeight(height);
       },
