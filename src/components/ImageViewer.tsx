@@ -26,7 +26,7 @@ export default function ImageViewer({
   imageWidth,
   imageUrls,
   files,
-  scrollRatio = 0.8,
+  scrollRatio = 0.6,
   scrollPosition,
   onScrollPositionChange,
   onCurrentImageChange,

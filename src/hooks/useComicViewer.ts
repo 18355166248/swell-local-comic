@@ -9,6 +9,7 @@ import {
   selectFolder,
   scanImageFiles,
   loadImageFile,
+  sortFiles,
 } from "../utils/fileUtils";
 import { saveHistory } from "../utils/historyUtils";
 
@@ -35,8 +36,9 @@ export const useComicViewer = () => {
           const history: ReadingHistory = JSON.parse(directRestore);
           sessionStorage.removeItem("directRestore");
 
-          // 直接使用历史记录中的文件列表
-          setFiles(history.files);
+          // 直接使用历史记录中的文件列表，并进行排序
+          const sortedFiles = sortFiles(history.files);
+          setFiles(sortedFiles);
           setFolderName(history.folderName);
           sessionStorage.setItem("currentFolderPath", history.folderPath);
 
@@ -48,7 +50,6 @@ export const useComicViewer = () => {
           const targetScrollPosition = history.scrollPosition || 0;
           const targetScrollHeight = history.scrollHeight || 0;
 
-          setCurrentIndex(targetIndex);
           setZoom(targetZoom);
           setViewMode(targetViewMode);
           setImageWidth(targetImageWidth);
@@ -61,33 +62,41 @@ export const useComicViewer = () => {
           setScrollPosition(targetScrollPosition);
           setScrollHeight(targetScrollHeight);
 
-          if (history.files.length > 0) {
-            const url = await loadImageFile(history.files[targetIndex]);
+          if (sortedFiles.length > 0) {
+            // 由于文件可能被重新排序，需要找到正确的索引
+            // 如果历史记录中的文件名在当前排序后的列表中，使用排序后的索引
+            const historyFileName = history.files[targetIndex]?.name;
+            let correctIndex = targetIndex;
+            if (historyFileName) {
+              const foundIndex = sortedFiles.findIndex(
+                (f) => f.name === historyFileName
+              );
+              if (foundIndex !== -1) {
+                correctIndex = foundIndex;
+              }
+            }
+
+            setCurrentIndex(correctIndex);
+            const url = await loadImageFile(sortedFiles[correctIndex]);
             setImageUrl(url);
 
-            // 如果是滚动模式，恢复图片URLs
-            if (
-              targetViewMode === "scroll" &&
-              history.imageUrls &&
-              history.imageUrls.length > 0
-            ) {
-              setImageUrls(history.imageUrls);
-            } else if (targetViewMode === "scroll") {
-              // 否则分批加载所有图片
+            // 如果是滚动模式，基于排序后的文件重新生成图片URLs
+            if (targetViewMode === "scroll") {
+              // 分批加载所有图片
               const batchSize = 10;
               const loadImagesInBatches = async () => {
                 setIsLoading(true);
                 setLoadingProgress(0);
                 const urls: string[] = [];
-                for (let i = 0; i < history.files.length; i += batchSize) {
-                  const batch = history.files.slice(i, i + batchSize);
+                for (let i = 0; i < sortedFiles.length; i += batchSize) {
+                  const batch = sortedFiles.slice(i, i + batchSize);
                   const batchUrls = await Promise.all(
                     batch.map((file) => loadImageFile(file))
                   );
                   urls.push(...batchUrls);
                   setImageUrls([...urls]);
                   const progress = Math.round(
-                    ((i + batchSize) / history.files.length) * 100
+                    ((i + batchSize) / sortedFiles.length) * 100
                   );
                   setLoadingProgress(Math.min(progress, 100));
                   await new Promise((resolve) => {
@@ -143,13 +152,28 @@ export const useComicViewer = () => {
       const targetViewMode = restoreData?.viewMode || viewMode;
       const targetImageWidth = restoreData?.imageWidth || imageWidth;
 
-      setCurrentIndex(targetIndex);
       setZoom(targetZoom);
       setViewMode(targetViewMode);
       setImageWidth(targetImageWidth);
 
       if (fileList.length > 0) {
-        const url = await loadImageFile(fileList[targetIndex]);
+        // 如果是从历史记录恢复，需要找到正确的索引
+        // 因为文件列表可能已经被重新排序
+        let correctIndex = targetIndex;
+        if (restoreData?.files && restoreData.files.length > targetIndex) {
+          const historyFileName = restoreData.files[targetIndex]?.name;
+          if (historyFileName) {
+            const foundIndex = fileList.findIndex(
+              (f) => f.name === historyFileName
+            );
+            if (foundIndex !== -1) {
+              correctIndex = foundIndex;
+            }
+          }
+        }
+
+        setCurrentIndex(correctIndex);
+        const url = await loadImageFile(fileList[correctIndex]);
         setImageUrl(url);
 
         // 如果是滚动模式，分批加载所有图片
