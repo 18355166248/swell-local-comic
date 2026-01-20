@@ -12,6 +12,7 @@ export default function ComicViewer() {
   const [restoreHistory, setRestoreHistory] = useState<ReadingHistory | null>(
     null
   );
+  const [imagesPerGroup, setImagesPerGroup] = useState<number>(1);
   const hasProcessedContinueReading = useRef(false);
 
   useEffect(() => {
@@ -132,6 +133,8 @@ export default function ComicViewer() {
         onToggleViewMode={actions.toggleViewMode}
         imageWidth={state.imageWidth}
         onImageWidthChange={actions.setImageWidth}
+        imagesPerGroup={imagesPerGroup}
+        onImagesPerGroupChange={setImagesPerGroup}
       />
 
       <div className="flex-1 overflow-hidden relative">
@@ -158,6 +161,7 @@ export default function ComicViewer() {
               : undefined
           }
           isLoading={state.isLoading}
+          imagesPerGroup={imagesPerGroup}
         />
         {state.isLoading && (
           <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-50">

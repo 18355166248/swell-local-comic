@@ -14,6 +14,8 @@ interface ToolbarProps {
   onToggleViewMode: () => void;
   imageWidth: number;
   onImageWidthChange: (width: number) => void;
+  imagesPerGroup: number;
+  onImagesPerGroupChange: (count: number) => void;
 }
 
 export default function Toolbar({
@@ -29,6 +31,8 @@ export default function Toolbar({
   onToggleViewMode,
   imageWidth,
   onImageWidthChange,
+  imagesPerGroup,
+  onImagesPerGroupChange,
 }: ToolbarProps) {
   const navigate = useNavigate();
 
@@ -80,19 +84,37 @@ export default function Toolbar({
           </button>
 
           {viewMode === "scroll" && (
-            <div className="flex items-center space-x-2 ml-2 pl-2 border-l border-gray-600">
-              <label className="text-sm text-gray-300">宽度:</label>
-              <input
-                type="number"
-                min="200"
-                max="2000"
-                step="50"
-                value={imageWidth}
-                onChange={(e) => onImageWidthChange(Number(e.target.value))}
-                className="bg-gray-700 text-white px-2 py-1 rounded w-20 text-sm"
-              />
-              <span className="text-sm text-gray-400">px</span>
-            </div>
+            <>
+              <div className="flex items-center space-x-2 ml-2 pl-2 border-l border-gray-600">
+                <label className="text-sm text-gray-300">宽度:</label>
+                <input
+                  type="number"
+                  min="200"
+                  max="2000"
+                  step="50"
+                  value={imageWidth}
+                  onChange={(e) => onImageWidthChange(Number(e.target.value))}
+                  className="bg-gray-700 text-white px-2 py-1 rounded w-20 text-sm"
+                />
+                <span className="text-sm text-gray-400">px</span>
+              </div>
+              <div className="flex items-center space-x-2 ml-2 pl-2 border-l border-gray-600">
+                <label className="text-sm text-gray-300">每组:</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  step="1"
+                  value={imagesPerGroup}
+                  onChange={(e) =>
+                    onImagesPerGroupChange(Number(e.target.value))
+                  }
+                  className="bg-gray-700 text-white px-2 py-1 rounded w-16 text-sm"
+                  title="每组图片数量，默认1（每张图片单独显示），可以配置成5（每5张合成一张）"
+                />
+                <span className="text-sm text-gray-400">张</span>
+              </div>
+            </>
           )}
 
           <div className="flex items-center space-x-2 ml-2 pl-2 border-l border-gray-600">
