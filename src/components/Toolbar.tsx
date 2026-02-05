@@ -73,10 +73,30 @@ export default function Toolbar({
     }
   };
 
+  const handleDrag = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    try {
+      console.log("🟡 [窗口控制] 尝试开始拖拽窗口");
+      const window = getCurrentWindow();
+      console.log("🟡 [窗口控制] 获取窗口对象成功:", window);
+      await window.startDragging();
+      console.log("🟡 [窗口控制] 开始拖拽窗口成功");
+    } catch (error) {
+      console.error("🟡 [窗口控制] 开始拖拽窗口失败:", error);
+    }
+  };
+
   return (
     <div className="bg-gray-800 h-full w-[280px] p-4 flex flex-col text-white border-r border-gray-700">
       {/* 窗口控制按钮 */}
       <div className="flex items-center justify-end space-x-2 mb-4 pb-4 border-b border-gray-700">
+        <button
+          onMouseDown={handleDrag}
+          className="w-6 h-6 flex items-center justify-center bg-gray-700 hover:bg-gray-600 rounded transition-colors cursor-move"
+          title="拖拽窗口"
+        >
+          <span className="text-xs">⊞</span>
+        </button>
         <button
           onClick={handleMinimize}
           className="w-6 h-6 flex items-center justify-center bg-gray-700 hover:bg-gray-600 rounded transition-colors"
