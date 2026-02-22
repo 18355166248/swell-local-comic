@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useCallback } from "react";
 import type { ViewMode } from "../types";
 import { useImageGroups } from "../hooks/useImageGroups";
 import { useScrollKeyboard } from "../hooks/useScrollKeyboard";
@@ -17,6 +17,7 @@ interface ImageViewerProps {
   scrollRatio?: number; // 滚动距离比例，默认0.8（80%）
   scrollPosition?: number; // 初始滚动位置
   onScrollPositionChange?: (position: number, height: number) => void; // 滚动位置变化回调，包含位置和总高度
+  onLoadNextFolder?: () => void; // 加载下一文件夹（底部点击下键/S键/D键触发）
   onCurrentImageChange?: (index: number) => void; // 当前可见图片索引变化回调
   isLoading?: boolean; // 是否正在加载
   imagesPerGroup?: number; // 每组图片数量，默认1（每张图片单独显示），可以配置成5（每5张合成一张）
@@ -34,11 +35,14 @@ export default function ImageViewer({
   scrollRatio = 0.6,
   scrollPosition,
   onScrollPositionChange,
+  onLoadNextFolder,
   onCurrentImageChange,
   isLoading = false,
   imagesPerGroup = 1,
 }: ImageViewerProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  /** 判定「已到底部」的阈值：距离底部小于等于此像素视为到底 */
+  const AT_BOTTOM_THRESHOLD = 5;
 
   // 使用自定义 hooks
   const imageGroups = useImageGroups(
@@ -52,6 +56,8 @@ export default function ImageViewer({
     viewMode,
     scrollRatio,
     scrollContainerRef,
+    onLoadNextFolderAtBottom: onLoadNextFolder,
+    isLoading,
   });
 
   useScrollPosition({
@@ -72,6 +78,26 @@ export default function ImageViewer({
     zoom,
     scrollContainerRef,
   });
+
+  // 向下滚动：若已在底部则加载下一文件夹，否则执行滚动（需用户主动点击/S键触发）
+  const handleScrollDownClick = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) {
+      handleScrollDown();
+      return;
+    }
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    const distanceToBottom = scrollHeight - scrollTop - clientHeight;
+    if (
+      onLoadNextFolder &&
+      distanceToBottom <= AT_BOTTOM_THRESHOLD &&
+      !isLoading
+    ) {
+      onLoadNextFolder();
+    } else {
+      handleScrollDown();
+    }
+  }, [handleScrollDown, onLoadNextFolder, isLoading]);
 
   if (!imageUrl && imageUrls.length === 0) {
     return (
@@ -130,7 +156,7 @@ export default function ImageViewer({
             ))}
           </div>
         </div>
-        {/* 悬浮滚动按钮 */}
+        {/* 悬浮滚动按钮 & 下一文件夹按钮 */}
         <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-10">
           <button
             onClick={handleScrollUp}
@@ -153,7 +179,7 @@ export default function ImageViewer({
             </svg>
           </button>
           <button
-            onClick={handleScrollDown}
+            onClick={handleScrollDownClick}
             className="scroll-btn bg-white/80 hover:bg-white border border-gray-300 rounded-full w-12 h-12 flex items-center justify-center shadow-lg transition-all hover:shadow-xl active:scale-95"
             aria-label="向下滚动"
           >
@@ -172,6 +198,30 @@ export default function ImageViewer({
               />
             </svg>
           </button>
+          {onLoadNextFolder && (
+            <button
+              onClick={onLoadNextFolder}
+              disabled={isLoading}
+              className="scroll-btn bg-white/80 hover:bg-white border border-gray-300 rounded-full w-12 h-12 flex items-center justify-center shadow-lg transition-all hover:shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="下一文件夹 (D)"
+              title="下一文件夹 (D)"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6 text-gray-700"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+                />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
     );

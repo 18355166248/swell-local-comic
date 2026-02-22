@@ -5,12 +5,25 @@ interface UseScrollKeyboardOptions {
   viewMode: ViewMode;
   scrollRatio: number;
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
+  /** 已在底部时按 S/ArrowDown 触发加载下一文件夹 */
+  onLoadNextFolderAtBottom?: () => void;
+  isLoading?: boolean;
+}
+
+const AT_BOTTOM_THRESHOLD = 5;
+
+function isAtBottom(container: HTMLElement): boolean {
+  const { scrollTop, scrollHeight, clientHeight } = container;
+  const distanceToBottom = scrollHeight - scrollTop - clientHeight;
+  return distanceToBottom <= AT_BOTTOM_THRESHOLD;
 }
 
 export function useScrollKeyboard({
   viewMode,
   scrollRatio,
   scrollContainerRef,
+  onLoadNextFolderAtBottom,
+  isLoading = false,
 }: UseScrollKeyboardOptions) {
   const scrollIntervalRef = useRef<number | null>(null);
   const pressedKeyRef = useRef<string | null>(null);
@@ -83,21 +96,45 @@ export function useScrollKeyboard({
           handleScrollUp();
         }, 100); // 每100ms滚动一次
       }
-      // s 键或下箭头键向下滚动
+      // s 键或下箭头键向下滚动（已在底部时加载下一文件夹）
       else if (key === "s" || keyCode === "ArrowDown") {
         e.preventDefault();
         const keyId = keyCode === "ArrowDown" ? "ArrowDown" : "s";
+        const container = scrollContainerRef.current;
+
+        if (
+          container &&
+          onLoadNextFolderAtBottom &&
+          !isLoading &&
+          isAtBottom(container)
+        ) {
+          stopScrolling();
+          onLoadNextFolderAtBottom();
+          return;
+        }
+
         // 如果已经有定时器在运行，不重复创建
         if (scrollIntervalRef.current && pressedKeyRef.current === keyId) {
           return;
         }
         // 清除之前的定时器（如果有）
         stopScrolling();
-        // 立即执行一次
+        // 立即执行一次（若执行后到达底部，下次 interval 会触发加载）
         handleScrollDown();
         // 设置持续滚动
         pressedKeyRef.current = keyId;
         scrollIntervalRef.current = setInterval(() => {
+          const c = scrollContainerRef.current;
+          if (
+            c &&
+            onLoadNextFolderAtBottom &&
+            !isLoading &&
+            isAtBottom(c)
+          ) {
+            stopScrolling();
+            onLoadNextFolderAtBottom();
+            return;
+          }
           handleScrollDown();
         }, 100); // 每100ms滚动一次
       }
@@ -133,7 +170,15 @@ export function useScrollKeyboard({
       window.removeEventListener("blur", handleBlur);
       stopScrolling();
     };
-  }, [viewMode, scrollRatio, handleScrollUp, handleScrollDown, stopScrolling]);
+  }, [
+    viewMode,
+    scrollRatio,
+    handleScrollUp,
+    handleScrollDown,
+    stopScrolling,
+    onLoadNextFolderAtBottom,
+    isLoading,
+  ]);
 
   return {
     handleScrollUp,

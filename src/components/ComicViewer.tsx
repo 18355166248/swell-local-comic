@@ -156,6 +156,9 @@ export default function ComicViewer() {
               ? actions.onScrollPositionChange
               : undefined
           }
+          onLoadNextFolder={
+            state.viewMode === "scroll" ? actions.loadNextFolder : undefined
+          }
           onCurrentImageChange={
             state.viewMode === "scroll"
               ? actions.onCurrentImageChange

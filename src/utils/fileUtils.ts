@@ -28,6 +28,24 @@ export const selectFolder = async (): Promise<FolderInfo | null> => {
 };
 
 /**
+ * 获取当前文件夹同级的下一个文件夹（按名称排序）
+ * 用于滚动到底部时实现文件夹级连续阅读
+ */
+export const getNextSiblingFolder = async (
+  folderPath: string
+): Promise<FolderInfo | null> => {
+  try {
+    const result = await invoke<FolderInfo | null>("get_next_sibling_folder", {
+      folderPath,
+    });
+    return result;
+  } catch (error) {
+    console.error("获取下一同级文件夹失败:", error);
+    return null;
+  }
+};
+
+/**
  * 自然排序比较函数，处理文件名中的数字
  * 例如：6-1 会排在 10-1 前面
  */

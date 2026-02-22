@@ -13,7 +13,6 @@
     "preview": "vite preview",
     "generate-icon": "node scripts/generate-icon.js",
     "clean": "node scripts/clean-cache.js",
-    "clean:icon-cache": "powershell -ExecutionPolicy Bypass -File scripts/clean-icon-cache.ps1",
     "clean:build": "node scripts/clean-cache.js && pnpm generate-icon && pnpm exec tauri build && node scripts/copy-release.js"
   },
   "dependencies": {

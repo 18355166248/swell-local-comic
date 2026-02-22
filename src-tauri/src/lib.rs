@@ -84,6 +84,62 @@ async fn read_image_file(file_path: String) -> Result<Vec<u8>, String> {
   fs::read(&file_path).map_err(|e| format!("读取文件失败: {}", e))
 }
 
+/// 获取当前文件夹同级的下一个文件夹（按名称排序后的下一个）
+#[command]
+async fn get_next_sibling_folder(folder_path: String) -> Result<Option<FolderInfo>, String> {
+  let path = Path::new(&folder_path);
+  if !path.exists() || !path.is_dir() {
+    return Err("文件夹不存在或不是目录".to_string());
+  }
+
+  let parent = match path.parent() {
+    Some(p) => p,
+    None => return Ok(None),
+  };
+
+  if !parent.exists() || !parent.is_dir() {
+    return Ok(None);
+  }
+
+  let current_name = path
+    .file_name()
+    .and_then(|n| n.to_str())
+    .unwrap_or("")
+    .to_string();
+
+  let mut sibling_dirs: Vec<(String, String)> = Vec::new();
+  let entries = fs::read_dir(parent).map_err(|e| format!("读取父目录失败: {}", e))?;
+
+  for entry in entries {
+    let entry = entry.map_err(|e| format!("读取条目失败: {}", e))?;
+    let entry_path = entry.path();
+
+    if entry_path.is_dir() {
+      if let Some(name) = entry_path.file_name().and_then(|n| n.to_str()) {
+        let full_path = entry_path.to_string_lossy().to_string();
+        sibling_dirs.push((name.to_string(), full_path));
+      }
+    }
+  }
+
+  sibling_dirs.sort_by(|a, b| a.0.cmp(&b.0));
+
+  let mut found_current = false;
+  for (name, full_path) in sibling_dirs {
+    if found_current {
+      return Ok(Some(FolderInfo {
+        name,
+        path: full_path,
+      }));
+    }
+    if name == current_name {
+      found_current = true;
+    }
+  }
+
+  Ok(None)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -92,7 +148,8 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       select_folder,
       read_image_files,
-      read_image_file
+      read_image_file,
+      get_next_sibling_folder
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

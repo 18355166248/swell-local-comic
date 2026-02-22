@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type {
   ComicFile,
   ComicViewerState,
@@ -10,6 +10,7 @@ import {
   scanImageFiles,
   loadImageFile,
   sortFiles,
+  getNextSiblingFolder,
 } from "../utils/fileUtils";
 import { saveHistory } from "../utils/historyUtils";
 
@@ -26,6 +27,8 @@ export const useComicViewer = () => {
   const [scrollHeight, setScrollHeight] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadingProgress, setLoadingProgress] = useState<number>(0);
+  const isLoadingNextFolderRef = useRef(false);
+  const hasNoMoreFoldersRef = useRef(false);
 
   const handleFolderSelect = useCallback(async () => {
     try {
@@ -42,6 +45,9 @@ export const useComicViewer = () => {
           setFolderName(history.folderName);
           sessionStorage.setItem("currentFolderPath", history.folderPath);
 
+          isLoadingNextFolderRef.current = false;
+          hasNoMoreFoldersRef.current = false;
+
           // 恢复阅读状态
           const targetIndex = history.currentIndex || 0;
           const targetZoom = history.zoom || 1;
@@ -57,7 +63,7 @@ export const useComicViewer = () => {
             "[useComicViewer] 恢复滚动位置 - position:",
             targetScrollPosition,
             "height:",
-            targetScrollHeight
+            targetScrollHeight,
           );
           setScrollPosition(targetScrollPosition);
           setScrollHeight(targetScrollHeight);
@@ -69,7 +75,7 @@ export const useComicViewer = () => {
             let correctIndex = targetIndex;
             if (historyFileName) {
               const foundIndex = sortedFiles.findIndex(
-                (f) => f.name === historyFileName
+                (f) => f.name === historyFileName,
               );
               if (foundIndex !== -1) {
                 correctIndex = foundIndex;
@@ -91,12 +97,12 @@ export const useComicViewer = () => {
                 for (let i = 0; i < sortedFiles.length; i += batchSize) {
                   const batch = sortedFiles.slice(i, i + batchSize);
                   const batchUrls = await Promise.all(
-                    batch.map((file) => loadImageFile(file))
+                    batch.map((file) => loadImageFile(file)),
                   );
                   urls.push(...batchUrls);
                   setImageUrls([...urls]);
                   const progress = Math.round(
-                    ((i + batchSize) / sortedFiles.length) * 100
+                    ((i + batchSize) / sortedFiles.length) * 100,
                   );
                   setLoadingProgress(Math.min(progress, 100));
                   await new Promise((resolve) => {
@@ -123,8 +129,14 @@ export const useComicViewer = () => {
         }
       }
 
+      isLoadingNextFolderRef.current = false;
+      hasNoMoreFoldersRef.current = false;
+
       const folderInfo = await selectFolder();
       if (!folderInfo) return;
+
+      isLoadingNextFolderRef.current = false;
+      hasNoMoreFoldersRef.current = false;
 
       const fileList = await scanImageFiles(folderInfo.path);
 
@@ -164,7 +176,7 @@ export const useComicViewer = () => {
           const historyFileName = restoreData.files[targetIndex]?.name;
           if (historyFileName) {
             const foundIndex = fileList.findIndex(
-              (f) => f.name === historyFileName
+              (f) => f.name === historyFileName,
             );
             if (foundIndex !== -1) {
               correctIndex = foundIndex;
@@ -187,13 +199,13 @@ export const useComicViewer = () => {
             for (let i = 0; i < fileList.length; i += batchSize) {
               const batch = fileList.slice(i, i + batchSize);
               const batchUrls = await Promise.all(
-                batch.map((file) => loadImageFile(file))
+                batch.map((file) => loadImageFile(file)),
               );
               urls.push(...batchUrls);
               // 每批加载后更新一次状态，让用户看到进度
               setImageUrls([...urls]);
               const progress = Math.round(
-                ((i + batchSize) / fileList.length) * 100
+                ((i + batchSize) / fileList.length) * 100,
               );
               setLoadingProgress(Math.min(progress, 100));
               // 使用 requestIdleCallback 或 setTimeout 让浏览器有机会渲染
@@ -255,6 +267,86 @@ export const useComicViewer = () => {
     setZoom(1);
   }, []);
 
+  /** 滚动到底部时加载同级下一文件夹：先清空当前列表，再加载下一文件夹，显示 loading */
+  const loadNextFolder = useCallback(
+    async (fromEmptyFolder = false) => {
+      if (
+        viewMode !== "scroll" ||
+        (!fromEmptyFolder && isLoading) ||
+        isLoadingNextFolderRef.current ||
+        hasNoMoreFoldersRef.current
+      ) {
+        return;
+      }
+
+      const currentFolderPath = sessionStorage.getItem("currentFolderPath");
+      if (!currentFolderPath) return;
+
+      const nextFolder = await getNextSiblingFolder(currentFolderPath);
+      if (!nextFolder) {
+        hasNoMoreFoldersRef.current = true;
+        return;
+      }
+
+      isLoadingNextFolderRef.current = true;
+
+      // 先清空当前图片列表并显示 loading
+      setFiles([]);
+      setImageUrls([]);
+      setCurrentIndex(0);
+      setScrollPosition(0);
+      setScrollHeight(0);
+      setFolderName(nextFolder.name);
+      sessionStorage.setItem("currentFolderPath", nextFolder.path);
+      setIsLoading(true);
+      setLoadingProgress(0);
+
+      try {
+        const newFiles = await scanImageFiles(nextFolder.path);
+        if (newFiles.length === 0) {
+          // 空文件夹：保持 loading，递归尝试下一文件夹（await 避免父级 finally 提前关闭 loading）
+          isLoadingNextFolderRef.current = false;
+          await loadNextFolder(true);
+          return;
+        }
+
+        const sortedNewFiles = sortFiles(newFiles);
+        setFiles(sortedNewFiles);
+
+        const batchSize = 10;
+        const urls: string[] = [];
+
+        for (let i = 0; i < sortedNewFiles.length; i += batchSize) {
+          const batch = sortedNewFiles.slice(i, i + batchSize);
+          const batchUrls = await Promise.all(
+            batch.map((file) => loadImageFile(file))
+          );
+          urls.push(...batchUrls);
+          setImageUrls([...urls]);
+          const progress = Math.round(
+            ((i + batchSize) / sortedNewFiles.length) * 100
+          );
+          setLoadingProgress(Math.min(progress, 100));
+          await new Promise((resolve) => {
+            if (typeof requestIdleCallback !== "undefined") {
+              requestIdleCallback(() => resolve(undefined), { timeout: 50 });
+            } else {
+              setTimeout(() => resolve(undefined), 0);
+            }
+          });
+        }
+
+        setLoadingProgress(100);
+      } catch (error) {
+        console.error("加载下一文件夹失败:", error);
+      } finally {
+        setIsLoading(false);
+        isLoadingNextFolderRef.current = false;
+      }
+    },
+    [viewMode, isLoading]
+  );
+
   // 键盘事件处理
   const handleKeyPress = useCallback(
     (e: KeyboardEvent) => {
@@ -281,9 +373,16 @@ export const useComicViewer = () => {
           e.preventDefault();
           resetZoom();
           break;
+        case "d":
+        case "D":
+          if (viewMode === "scroll") {
+            e.preventDefault();
+            loadNextFolder();
+          }
+          break;
       }
     },
-    [nextPage, prevPage, zoomIn, zoomOut, resetZoom]
+    [nextPage, prevPage, zoomIn, zoomOut, resetZoom, viewMode, loadNextFolder],
   );
 
   // 添加事件监听器
@@ -307,7 +406,7 @@ export const useComicViewer = () => {
         for (let i = 0; i < files.length; i += batchSize) {
           const batch = files.slice(i, i + batchSize);
           const batchUrls = await Promise.all(
-            batch.map((file) => loadImageFile(file))
+            batch.map((file) => loadImageFile(file)),
           );
           urls.push(...batchUrls);
           setImageUrls([...urls]);
@@ -357,7 +456,7 @@ export const useComicViewer = () => {
         }
       }
     },
-    [viewMode, zoomIn, zoomOut]
+    [viewMode, zoomIn, zoomOut],
   );
 
   // 视图模式切换时，分批加载所有图片
@@ -371,7 +470,7 @@ export const useComicViewer = () => {
         for (let i = 0; i < files.length; i += batchSize) {
           const batch = files.slice(i, i + batchSize);
           const batchUrls = await Promise.all(
-            batch.map((file) => loadImageFile(file))
+            batch.map((file) => loadImageFile(file)),
           );
           urls.push(...batchUrls);
           setImageUrls([...urls]);
@@ -467,6 +566,9 @@ export const useComicViewer = () => {
         if (viewMode === "scroll") {
           setCurrentIndex(index);
         }
+      },
+      loadNextFolder: () => {
+        loadNextFolder();
       },
     },
   };
