@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useComicViewer } from "../hooks/useComicViewer";
 import Toolbar from "./Toolbar";
 import ImageViewer from "./ImageViewer";
@@ -13,7 +14,32 @@ export default function ComicViewer() {
     null
   );
   const [imagesPerGroup, setImagesPerGroup] = useState<number>(1);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fullscreenImageFit, setFullscreenImageFit] = useState<
+    "original" | "fit"
+  >("original");
   const hasProcessedContinueReading = useRef(false);
+
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      const window = getCurrentWindow();
+      const willBeFullscreen = !isFullscreen;
+      await window.setFullscreen(willBeFullscreen);
+      setIsFullscreen(willBeFullscreen);
+    } catch {
+      setIsFullscreen((prev) => !prev);
+    }
+  }, [isFullscreen]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isFullscreen) {
+        toggleFullscreen();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isFullscreen, toggleFullscreen]);
 
   useEffect(() => {
     // 检查是否有需要恢复的历史记录
@@ -103,8 +129,9 @@ export default function ComicViewer() {
 
   return (
     <div className="h-screen bg-gray-900 flex">
-      <div className="fixed left-0 top-0 bottom-0 z-40">
-        <Toolbar
+      {!isFullscreen && (
+        <div className="fixed left-0 top-0 bottom-0 z-40">
+          <Toolbar
           onFolderSelect={handleFolderSelect}
           currentFileName={state.files[state.currentIndex]?.name}
           currentIndex={state.currentIndex}
@@ -119,17 +146,21 @@ export default function ComicViewer() {
           onImageWidthChange={actions.setImageWidth}
           imagesPerGroup={imagesPerGroup}
           onImagesPerGroupChange={setImagesPerGroup}
+          onToggleFullscreen={toggleFullscreen}
         />
-      </div>
+        </div>
+      )}
 
-      <div className="flex-1 overflow-hidden relative ml-[280px]">
+      <div
+        className={`flex-1 overflow-hidden relative ${isFullscreen ? "ml-0" : "ml-[280px]"}`}
+      >
         {/* 恢复提示 */}
         {restoreHistory && (
           <div className="absolute top-0 left-0 right-0 bg-blue-600 text-white px-4 py-2 text-center text-sm z-50">
             从历史记录恢复: {restoreHistory.folderName} - 第{" "}
             {restoreHistory.currentIndex + 1} 页
             <button
-              onClick={() => {
+              onClick={() => {  
                 setRestoreHistory(null);
                 sessionStorage.removeItem("continueReading");
               }}
@@ -166,6 +197,19 @@ export default function ComicViewer() {
           }
           isLoading={state.isLoading}
           imagesPerGroup={imagesPerGroup}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={toggleFullscreen}
+          currentIndex={state.currentIndex}
+          totalFiles={state.files.length}
+          scrollPositionRatio={
+            state.viewMode === "scroll" &&
+            (state.scrollHeight ?? 0) > 0 &&
+            state.scrollPosition !== undefined
+              ? state.scrollPosition / (state.scrollHeight ?? 1)
+              : undefined
+          }
+          fullscreenImageFit={fullscreenImageFit}
+          onFullscreenImageFitChange={setFullscreenImageFit}
         />
         {state.isLoading && (
           <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-50">
@@ -186,7 +230,7 @@ export default function ComicViewer() {
         )}
       </div>
 
-      {state.viewMode === "page" && (
+      {state.viewMode === "page" && !isFullscreen && (
         <Navigation
           files={state.files}
           currentIndex={state.currentIndex}

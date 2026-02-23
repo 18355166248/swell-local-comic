@@ -360,6 +360,23 @@ export const useComicViewer = () => {
           e.preventDefault();
           prevPage();
           break;
+        case "a":
+        case "A":
+          if (viewMode === "page") {
+            e.preventDefault();
+            prevPage();
+          }
+          break;
+        case "d":
+        case "D":
+          if (viewMode === "page") {
+            e.preventDefault();
+            nextPage();
+          } else if (viewMode === "scroll") {
+            e.preventDefault();
+            loadNextFolder();
+          }
+          break;
         case "+":
         case "=":
           e.preventDefault();
@@ -372,13 +389,6 @@ export const useComicViewer = () => {
         case "0":
           e.preventDefault();
           resetZoom();
-          break;
-        case "d":
-        case "D":
-          if (viewMode === "scroll") {
-            e.preventDefault();
-            loadNextFolder();
-          }
           break;
       }
     },

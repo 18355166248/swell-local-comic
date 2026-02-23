@@ -17,6 +17,7 @@ interface ToolbarProps {
   onImageWidthChange: (width: number) => void;
   imagesPerGroup: number;
   onImagesPerGroupChange: (count: number) => void;
+  onToggleFullscreen?: () => void;
 }
 
 export default function Toolbar({
@@ -34,6 +35,7 @@ export default function Toolbar({
   onImageWidthChange,
   imagesPerGroup,
   onImagesPerGroupChange,
+  onToggleFullscreen,
 }: ToolbarProps) {
   const navigate = useNavigate();
 
@@ -133,6 +135,18 @@ export default function Toolbar({
         >
           阅读历史
         </button>
+        {totalFiles > 0 && onToggleFullscreen && (
+          <button
+            onClick={onToggleFullscreen}
+            className="bg-amber-600 hover:bg-amber-700 px-4 py-2 rounded-lg transition-colors w-full flex items-center justify-center gap-2"
+            title="全屏看图 (ESC 退出)"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+            </svg>
+            全屏
+          </button>
+        )}
         {totalFiles > 0 && (
           <div className="text-sm text-gray-300 space-y-2">
             {viewMode === "scroll" ? (
