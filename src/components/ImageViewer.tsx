@@ -157,7 +157,7 @@ export default function ImageViewer({
           </div>
         </div>
         {/* 悬浮滚动按钮 & 下一文件夹按钮 */}
-        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-10">
+        <div className="absolute right-6 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-10">
           <button
             onClick={handleScrollUp}
             className="scroll-btn bg-white/80 hover:bg-white border border-gray-300 rounded-full w-12 h-12 flex items-center justify-center shadow-lg transition-all hover:shadow-xl active:scale-95"
