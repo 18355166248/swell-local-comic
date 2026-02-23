@@ -6,6 +6,7 @@ interface NavigationProps {
   onPrevPage: () => void;
   onNextPage: () => void;
   onGoToPage: (index: number) => void;
+  onLoadNextFolder?: () => void;
 }
 
 export default function Navigation({
@@ -14,6 +15,7 @@ export default function Navigation({
   onPrevPage,
   onNextPage,
   onGoToPage,
+  onLoadNextFolder,
 }: NavigationProps) {
   if (files.length === 0) return null;
 
@@ -59,14 +61,25 @@ export default function Navigation({
 
       <button
         onClick={onNextPage}
-        disabled={currentIndex === files.length - 1}
         className="w-12 h-10 flex items-center justify-center rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-700 transition-colors"
-        title="下一页 (→ D)"
+        title="下一页，最后一页时打开下一文件夹 (→ D)"
       >
         <svg className="w-5 h-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
       </button>
+
+      {onLoadNextFolder && (
+        <button
+          onClick={onLoadNextFolder}
+          className="w-12 h-10 flex items-center justify-center rounded-md bg-gray-600 hover:bg-gray-500 transition-colors"
+          title="直接翻到下一文件夹"
+        >
+          <svg className="w-5 h-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 }

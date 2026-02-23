@@ -122,7 +122,8 @@ async fn get_next_sibling_folder(folder_path: String) -> Result<Option<FolderInf
     }
   }
 
-  sibling_dirs.sort_by(|a, b| a.0.cmp(&b.0));
+  // 使用自然排序，使 1、2、10 按数字顺序排列，而非字典序
+  sibling_dirs.sort_by(|a, b| natord::compare(&a.0, &b.0));
 
   let mut found_current = false;
   for (name, full_path) in sibling_dirs {

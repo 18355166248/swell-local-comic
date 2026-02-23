@@ -237,6 +237,7 @@ export default function ComicViewer() {
           onPrevPage={actions.prevPage}
           onNextPage={actions.nextPage}
           onGoToPage={actions.goToPage}
+          onLoadNextFolder={actions.loadNextFolder}
         />
       )}
     </div>

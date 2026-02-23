@@ -239,39 +239,13 @@ export const useComicViewer = () => {
     }
   }, []);
 
-  const nextPage = useCallback(async () => {
-    if (currentIndex < files.length - 1) {
-      const newIndex = currentIndex + 1;
-      setCurrentIndex(newIndex);
-      await loadImage(files[newIndex]);
-    }
-  }, [currentIndex, files, loadImage]);
-
-  const prevPage = useCallback(async () => {
-    if (currentIndex > 0) {
-      const newIndex = currentIndex - 1;
-      setCurrentIndex(newIndex);
-      await loadImage(files[newIndex]);
-    }
-  }, [currentIndex, files, loadImage]);
-
-  const zoomIn = useCallback(() => {
-    setZoom((prev) => Math.min(prev * 1.2, 3));
-  }, []);
-
-  const zoomOut = useCallback(() => {
-    setZoom((prev) => Math.max(prev / 1.2, 0.5));
-  }, []);
-
-  const resetZoom = useCallback(() => {
-    setZoom(1);
-  }, []);
-
-  /** 滚动到底部时加载同级下一文件夹：先清空当前列表，再加载下一文件夹，显示 loading */
+  /** 滚动/分页模式下加载同级下一文件夹：先清空当前列表，再加载下一文件夹，显示 loading */
   const loadNextFolder = useCallback(
     async (fromEmptyFolder = false) => {
+      const isScrollMode = viewMode === "scroll";
+      const isPageMode = viewMode === "page";
       if (
-        viewMode !== "scroll" ||
+        (!isScrollMode && !isPageMode) ||
         (!fromEmptyFolder && isLoading) ||
         isLoadingNextFolderRef.current ||
         hasNoMoreFoldersRef.current
@@ -313,30 +287,36 @@ export const useComicViewer = () => {
         const sortedNewFiles = sortFiles(newFiles);
         setFiles(sortedNewFiles);
 
-        const batchSize = 10;
-        const urls: string[] = [];
-
-        for (let i = 0; i < sortedNewFiles.length; i += batchSize) {
-          const batch = sortedNewFiles.slice(i, i + batchSize);
-          const batchUrls = await Promise.all(
-            batch.map((file) => loadImageFile(file))
-          );
-          urls.push(...batchUrls);
-          setImageUrls([...urls]);
-          const progress = Math.round(
-            ((i + batchSize) / sortedNewFiles.length) * 100
-          );
-          setLoadingProgress(Math.min(progress, 100));
-          await new Promise((resolve) => {
-            if (typeof requestIdleCallback !== "undefined") {
-              requestIdleCallback(() => resolve(undefined), { timeout: 50 });
-            } else {
-              setTimeout(() => resolve(undefined), 0);
-            }
-          });
+        if (isPageMode) {
+          // 分页模式：只加载第一张图片
+          const url = await loadImageFile(sortedNewFiles[0]);
+          setImageUrl(url);
+          setLoadingProgress(100);
+        } else {
+          // 滚动模式：分批加载所有图片
+          const batchSize = 10;
+          const urls: string[] = [];
+          for (let i = 0; i < sortedNewFiles.length; i += batchSize) {
+            const batch = sortedNewFiles.slice(i, i + batchSize);
+            const batchUrls = await Promise.all(
+              batch.map((file) => loadImageFile(file))
+            );
+            urls.push(...batchUrls);
+            setImageUrls([...urls]);
+            const progress = Math.round(
+              ((i + batchSize) / sortedNewFiles.length) * 100
+            );
+            setLoadingProgress(Math.min(progress, 100));
+            await new Promise((resolve) => {
+              if (typeof requestIdleCallback !== "undefined") {
+                requestIdleCallback(() => resolve(undefined), { timeout: 50 });
+              } else {
+                setTimeout(() => resolve(undefined), 0);
+              }
+            });
+          }
+          setLoadingProgress(100);
         }
-
-        setLoadingProgress(100);
       } catch (error) {
         console.error("加载下一文件夹失败:", error);
       } finally {
@@ -346,6 +326,37 @@ export const useComicViewer = () => {
     },
     [viewMode, isLoading]
   );
+
+  const nextPage = useCallback(async () => {
+    if (currentIndex < files.length - 1) {
+      const newIndex = currentIndex + 1;
+      setCurrentIndex(newIndex);
+      await loadImage(files[newIndex]);
+    } else if (viewMode === "page" && currentIndex === files.length - 1 && files.length > 0) {
+      // 分页模式下翻到最后一页再翻页时，加载下一文件夹
+      await loadNextFolder();
+    }
+  }, [currentIndex, files, loadImage, viewMode, loadNextFolder]);
+
+  const prevPage = useCallback(async () => {
+    if (currentIndex > 0) {
+      const newIndex = currentIndex - 1;
+      setCurrentIndex(newIndex);
+      await loadImage(files[newIndex]);
+    }
+  }, [currentIndex, files, loadImage]);
+
+  const zoomIn = useCallback(() => {
+    setZoom((prev) => Math.min(prev * 1.2, 3));
+  }, []);
+
+  const zoomOut = useCallback(() => {
+    setZoom((prev) => Math.max(prev / 1.2, 0.5));
+  }, []);
+
+  const resetZoom = useCallback(() => {
+    setZoom(1);
+  }, []);
 
   // 键盘事件处理
   const handleKeyPress = useCallback(
