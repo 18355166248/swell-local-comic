@@ -1,21 +1,79 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import type { ReadingHistory } from "../types";
 import {
-  getAllHistory,
-  deleteHistory,
   clearAllHistory,
+  deleteHistory,
+  getAllHistory,
 } from "../utils/historyUtils";
+
+function formatTime(timestamp: number) {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const minutes = Math.floor(diff / (1000 * 60));
+
+  if (days > 0) return `${days} 天前`;
+  if (hours > 0) return `${hours} 小时前`;
+  if (minutes > 0) return `${minutes} 分钟前`;
+  return "刚刚";
+}
+
+function getProgress(history: ReadingHistory) {
+  if (history.viewMode === "scroll" && history.scrollPosition !== undefined) {
+    if (history.scrollHeight && history.scrollHeight > 0) {
+      const progress = Math.min(
+        Math.round((history.scrollPosition / history.scrollHeight) * 100),
+        100,
+      );
+      return {
+        label: `滚动 ${progress}%`,
+        detail: `${Math.round(history.scrollPosition)}px`,
+        progress,
+      };
+    }
+
+    return {
+      label: "滚动阅读",
+      detail: `${Math.round(history.scrollPosition)}px`,
+      progress: 0,
+    };
+  }
+
+  if (history.totalFiles <= 0) {
+    return {
+      label: "未开始",
+      detail: "0 / 0",
+      progress: 0,
+    };
+  }
+
+  const current = history.currentIndex + 1;
+  const progress = Math.round((current / history.totalFiles) * 100);
+  return {
+    label: `${current} / ${history.totalFiles}`,
+    detail: `${progress}%`,
+    progress,
+  };
+}
+
+function splitHistory(histories: ReadingHistory[]) {
+  return {
+    featured: histories.slice(0, 3),
+    rest: histories.slice(3),
+  };
+}
 
 export default function History() {
   const navigate = useNavigate();
   const [histories, setHistories] = useState<ReadingHistory[]>(() =>
-    getAllHistory()
+    getAllHistory(),
   );
 
   const loadHistories = useCallback(() => {
-    const allHistories = getAllHistory();
-    setHistories(allHistories);
+    setHistories(getAllHistory());
   }, []);
 
   const handleDelete = (folderPath: string, folderName: string) => {
@@ -33,187 +91,207 @@ export default function History() {
   };
 
   const handleContinueReading = (history: ReadingHistory) => {
-    // 将历史记录信息存储到 sessionStorage 中，以便 ComicViewer 恢复状态
     sessionStorage.setItem("continueReading", JSON.stringify(history));
-    // 如果历史记录包含完整的文件夹信息，直接设置当前文件夹路径
     if (history.folderPath) {
       sessionStorage.setItem("currentFolderPath", history.folderPath);
     }
-    // 携带参数表示是从继续阅读跳转过来的
     navigate("/viewer?fromContinueReading=true");
   };
 
-  const formatTime = (timestamp: number) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor(diff / (1000 * 60));
-
-    if (days > 0) {
-      return `${days}天前`;
-    }
-    if (hours > 0) {
-      return `${hours}小时前`;
-    }
-    if (minutes > 0) {
-      return `${minutes}分钟前`;
-    }
-    return "刚刚";
-  };
-
-  const getProgress = (history: ReadingHistory) => {
-    if (history.viewMode === "scroll" && history.scrollPosition !== undefined) {
-      // 滚动模式：计算滚动进度
-      if (history.scrollHeight && history.scrollHeight > 0) {
-        const progress = Math.min(
-          Math.round((history.scrollPosition / history.scrollHeight) * 100),
-          100
-        );
-        return {
-          type: "scroll",
-          progress,
-          position: history.scrollPosition,
-          height: history.scrollHeight,
-        };
-      } else {
-        // 如果没有高度信息，显示位置信息
-        return {
-          type: "scroll",
-          progress: 0,
-          position: history.scrollPosition,
-        };
-      }
-    } else {
-      // 分页模式：显示页面进度
-      if (history.totalFiles === 0) return { type: "page", progress: 0 };
-      return {
-        type: "page",
-        progress: Math.round(
-          ((history.currentIndex + 1) / history.totalFiles) * 100
-        ),
-      };
-    }
-  };
+  const { featured, rest } = useMemo(() => splitHistory(histories), [histories]);
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-8">
-        <div className="mb-6 flex items-center justify-between">
+    <main className="mx-auto max-w-7xl px-6 py-8">
+      <section className="mb-8 flex items-start justify-between gap-6">
         <div>
-          <h1 className="text-2xl font-semibold">阅读历史</h1>
+          <h1 className="text-2xl font-semibold text-gray-50">阅读历史</h1>
           <p className="mt-1 text-sm text-gray-400">
-            从最近读过的章节继续阅读。
+            先继续最近读到的章节，再回头整理旧记录。
           </p>
         </div>
-            {histories.length > 0 && (
-              <button
-                onClick={handleClearAll}
-              className="rounded bg-red-600 px-4 py-2 text-sm transition-colors hover:bg-red-700"
-              >
-                清空全部
-              </button>
-            )}
-        </div>
+        {histories.length > 0 && (
+          <button
+            onClick={handleClearAll}
+            className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-100 transition-colors hover:bg-red-500/20"
+          >
+            清空全部
+          </button>
+        )}
+      </section>
 
-        {histories.length === 0 ? (
-          <div className="text-center py-20">
-            <p className="text-gray-400 text-lg">暂无阅读历史</p>
+      {histories.length === 0 ? (
+        <section className="rounded-3xl border border-white/8 bg-white/[0.03] px-8 py-20 text-center">
+          <div className="mx-auto max-w-md">
+            <div className="text-lg text-gray-200">还没有最近阅读</div>
+            <p className="mt-2 text-sm text-gray-500">
+              从书库挑一个章节开始读，这里会自动记住你停下来的位置。
+            </p>
             <button
-            onClick={() => navigate("/")}
-            className="mt-4 rounded bg-blue-600 px-6 py-2 transition-colors hover:bg-blue-700"
+              onClick={() => navigate("/")}
+              className="mt-6 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-500"
             >
-            返回书库
+              返回书库
             </button>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {histories.map((history) => (
-              <div
-                key={history.folderName}
-                className="bg-gray-800 rounded-lg p-4 hover:bg-gray-700 transition-colors cursor-pointer group"
-                onClick={() => handleContinueReading(history)}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <h3 className="text-lg font-semibold truncate flex-1 mr-2">
-                    {history.folderName}
-                  </h3>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete(history.folderPath, history.folderName);
-                    }}
-                    className="text-red-400 hover:text-red-300 text-sm px-2 py-1 rounded transition-colors opacity-0 group-hover:opacity-100 transition-opacity"
-                    title="删除"
+        </section>
+      ) : (
+        <div className="space-y-8">
+          <section>
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold text-gray-100">最近继续读</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                保留最近 3 条，优先回到刚看到一半的内容。
+              </p>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {featured.map((history) => {
+                const progress = getProgress(history);
+                return (
+                  <article
+                    key={`${history.folderPath}-${history.lastReadTime}`}
+                    className="rounded-3xl border border-white/8 bg-[#111821] p-5 shadow-[0_18px_40px_rgba(0,0,0,0.22)]"
                   >
-                    ✕
-                  </button>
-                </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-xs uppercase tracking-wide text-blue-300/80">
+                          最近阅读
+                        </div>
+                        <h3 className="mt-2 truncate text-lg font-semibold text-gray-50">
+                          {history.folderName}
+                        </h3>
+                        <div
+                          className="mt-2 truncate text-xs text-gray-500"
+                          title={history.folderPath}
+                        >
+                          {history.folderPath}
+                        </div>
+                      </div>
+                      <div className="shrink-0 rounded-full bg-white/[0.04] px-2.5 py-1 text-xs text-gray-300">
+                        {formatTime(history.lastReadTime)}
+                      </div>
+                    </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-sm text-gray-300">
-                    <span>阅读进度</span>
-                    <span>
-                      {(() => {
-                        const progressInfo = getProgress(history);
-                        if (progressInfo.type === "scroll") {
-                          if (progressInfo.progress > 0) {
-                            return `${progressInfo.progress}% (${progressInfo.position}px)`;
-                          } else {
-                            return `滚动位置: ${progressInfo.position}px`;
-                          }
-                        } else {
-                          return `${history.currentIndex + 1} / ${
-                            history.totalFiles
-                          }`;
-                        }
-                      })()}
-                    </span>
-                  </div>
+                    <div className="mt-5">
+                      <div className="flex items-center justify-between gap-3 text-sm">
+                        <span className="text-gray-300">{progress.label}</span>
+                        <span className="text-gray-500">{progress.detail}</span>
+                      </div>
+                      <div className="mt-2 h-2 rounded-full bg-white/[0.06]">
+                        <div
+                          className="h-2 rounded-full bg-blue-500 transition-all"
+                          style={{ width: `${Math.max(progress.progress, 6)}%` }}
+                        />
+                      </div>
+                      {history.currentFileName && (
+                        <div className="mt-3 truncate text-sm text-gray-400">
+                          当前图片：{history.currentFileName}
+                        </div>
+                      )}
+                    </div>
 
-                  <div className="w-full bg-gray-700 rounded-full h-2">
-                    <div
-                      className="bg-blue-600 h-2 rounded-full transition-all"
-                      style={{
-                        width: (() => {
-                          const progressInfo = getProgress(history);
-                          if (progressInfo.type === "scroll") {
-                            return progressInfo.progress > 0
-                              ? `${progressInfo.progress}%`
-                              : "100%";
-                          } else {
-                            return `${progressInfo.progress}%`;
-                          }
-                        })(),
-                      }}
-                    />
-                  </div>
+                    <div className="mt-5 flex items-center justify-between gap-3">
+                      <button
+                        onClick={() => handleDelete(history.folderPath, history.folderName)}
+                        className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-gray-300 transition-colors hover:bg-white/[0.08] hover:text-white"
+                      >
+                        删除
+                      </button>
+                      <button
+                        onClick={() => handleContinueReading(history)}
+                        className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
+                      >
+                        继续阅读
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
 
-                  {history.currentFileName && (
-                    <p className="text-sm text-gray-400 truncate">
-                      当前: {history.currentFileName}
-                    </p>
-                  )}
+          <section>
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold text-gray-100">历史列表</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                所有记录按最近阅读时间排序，方便继续或清理。
+              </p>
+            </div>
 
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-gray-500">
-                      {formatTime(history.lastReadTime)}
-                    </p>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleContinueReading(history);
-                      }}
-                      className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-3 py-1 rounded transition-colors opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      继续阅读
-                    </button>
-                  </div>
-                </div>
+            <div className="overflow-hidden rounded-3xl border border-white/8 bg-white/[0.03]">
+              <div className="grid grid-cols-[minmax(0,2.1fr)_minmax(180px,1fr)_140px_180px] gap-4 border-b border-white/8 px-5 py-3 text-xs uppercase tracking-wide text-gray-500">
+                <div>章节</div>
+                <div>进度</div>
+                <div>最近阅读</div>
+                <div>操作</div>
               </div>
-            ))}
-          </div>
-        )}
+
+              <div className="divide-y divide-white/6">
+                {(rest.length > 0 ? rest : featured).map((history) => {
+                  const progress = getProgress(history);
+                  return (
+                    <div
+                      key={`${history.folderPath}-${history.lastReadTime}`}
+                      className="grid grid-cols-[minmax(0,2.1fr)_minmax(180px,1fr)_140px_180px] gap-4 px-5 py-4 transition-colors hover:bg-white/[0.03]"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-gray-100">
+                          {history.folderName}
+                        </div>
+                        <div
+                          className="mt-1 truncate text-xs text-gray-500"
+                          title={history.folderPath}
+                        >
+                          {history.folderPath}
+                        </div>
+                        {history.currentFileName && (
+                          <div className="mt-2 truncate text-xs text-gray-400">
+                            当前图片：{history.currentFileName}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="min-w-0">
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <span className="truncate text-gray-200">{progress.label}</span>
+                          <span className="shrink-0 text-xs text-gray-500">
+                            {progress.detail}
+                          </span>
+                        </div>
+                        <div className="mt-2 h-2 rounded-full bg-white/[0.06]">
+                          <div
+                            className="h-2 rounded-full bg-blue-500 transition-all"
+                            style={{ width: `${Math.max(progress.progress, 6)}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="text-sm text-gray-400">
+                        {formatTime(history.lastReadTime)}
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleDelete(history.folderPath, history.folderName)}
+                          className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-gray-300 transition-colors hover:bg-white/[0.08] hover:text-white"
+                        >
+                          删除
+                        </button>
+                        <button
+                          onClick={() => handleContinueReading(history)}
+                          className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
+                        >
+                          继续阅读
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
