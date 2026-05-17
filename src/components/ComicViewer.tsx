@@ -6,12 +6,18 @@ import Toolbar from "./Toolbar";
 import ImageViewer from "./ImageViewer";
 import Navigation from "./Navigation";
 import type { ReadingHistory } from "../types";
+import { normalizeLibraryPathId } from "../utils/libraryUtils";
+
+interface ChapterSequenceItem {
+  name: string;
+  path: string;
+}
 
 export default function ComicViewer() {
   const { state, actions } = useComicViewer();
   const [searchParams, setSearchParams] = useSearchParams();
   const [restoreHistory, setRestoreHistory] = useState<ReadingHistory | null>(
-    null
+    null,
   );
   const [imagesPerGroup, setImagesPerGroup] = useState<number>(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -33,45 +39,81 @@ export default function ComicViewer() {
   }, [isFullscreen]);
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isFullscreen) {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && isFullscreen) {
         toggleFullscreen();
       }
     };
+
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isFullscreen, toggleFullscreen]);
 
+  const chapterSequence = (() => {
+    const rawSequence = sessionStorage.getItem("comicChapterSequence");
+    if (!rawSequence) {
+      return [];
+    }
+
+    try {
+      return JSON.parse(rawSequence) as ChapterSequenceItem[];
+    } catch (error) {
+      console.error("解析章节序列失败:", error);
+      return [];
+    }
+  })();
+
+  const currentChapterIndex = (() => {
+    if (!state.folderPath) return -1;
+    const currentPathId = normalizeLibraryPathId(state.folderPath);
+    return chapterSequence.findIndex(
+      (item) => normalizeLibraryPathId(item.path) === currentPathId,
+    );
+  })();
+
+  const prevChapter = currentChapterIndex > 0 ? chapterSequence[currentChapterIndex - 1] : null;
+  const nextChapter =
+    currentChapterIndex >= 0 && currentChapterIndex < chapterSequence.length - 1
+      ? chapterSequence[currentChapterIndex + 1]
+      : null;
+
+  const openChapterBySequence = useCallback(
+    async (chapter: ChapterSequenceItem | null) => {
+      if (!chapter) return;
+      sessionStorage.removeItem("continueReading");
+      setRestoreHistory(null);
+      sessionStorage.setItem("openComicFolder", JSON.stringify(chapter));
+      await actions.handleFolderSelect();
+    },
+    [actions],
+  );
+
   useEffect(() => {
-    // 检查是否有需要恢复的历史记录
     const continueReading = sessionStorage.getItem("continueReading");
-    if (continueReading) {
-      try {
-        const history: ReadingHistory = JSON.parse(continueReading);
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setRestoreHistory(history);
-        // 如果历史记录包含完整的文件列表，可以直接恢复
-        if (history.files && history.files.length > 0) {
-          sessionStorage.setItem("directRestore", JSON.stringify(history));
-        }
-      } catch (error) {
-        console.error("解析历史记录失败:", error);
-        sessionStorage.removeItem("continueReading");
+    if (!continueReading) return;
+
+    try {
+      const history: ReadingHistory = JSON.parse(continueReading);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setRestoreHistory(history);
+      if (history.files && history.files.length > 0) {
+        sessionStorage.setItem("directRestore", JSON.stringify(history));
       }
+    } catch (error) {
+      console.error("解析历史记录失败:", error);
+      sessionStorage.removeItem("continueReading");
     }
   }, []);
 
   const handleFolderSelect = useCallback(async () => {
     try {
       if (restoreHistory) {
-        // 如果有恢复的历史记录，设置一个标志来恢复状态
         sessionStorage.setItem("restoreState", JSON.stringify(restoreHistory));
         sessionStorage.removeItem("continueReading");
         setRestoreHistory(null);
         return;
       }
 
-      // 调用文件夹选择逻辑
       await actions.handleFolderSelect();
     } catch (error) {
       console.error("选择文件夹失败:", error);
@@ -79,7 +121,6 @@ export default function ComicViewer() {
   }, [restoreHistory, actions]);
 
   useEffect(() => {
-    // 判断如果是从继续阅读过来的，主动执行 handleFolderSelect
     const fromContinueReading = searchParams.get("fromContinueReading");
     const openFolder = searchParams.get("openFolder");
 
@@ -97,7 +138,6 @@ export default function ComicViewer() {
       return;
     }
 
-    // 如果查询参数变化了（从 true 变为其他值），重置标志
     if (fromContinueReading !== "true") {
       hasProcessedContinueReading.current = false;
       return;
@@ -107,24 +147,18 @@ export default function ComicViewer() {
       fromContinueReading === "true" &&
       !hasProcessedContinueReading.current
     ) {
-      // 标记为已处理，防止重复执行
       hasProcessedContinueReading.current = true;
 
-      // 先执行逻辑，再移除查询参数，避免触发重复执行
       const executeContinueReading = async () => {
-        // 检查是否有完整的历史记录可以直接恢复
         const continueReading = sessionStorage.getItem("continueReading");
         if (continueReading) {
           try {
             const history: ReadingHistory = JSON.parse(continueReading);
-            // 如果历史记录包含完整的文件列表，直接设置 directRestore，不需要选择文件夹
             if (history.files && history.files.length > 0) {
               sessionStorage.setItem("directRestore", JSON.stringify(history));
               sessionStorage.removeItem("continueReading");
               setRestoreHistory(null);
-              // 直接调用 handleFolderSelect，它会检测到 directRestore 并直接恢复
               await actions.handleFolderSelect();
-              // 移除查询参数
               setSearchParams({});
               return;
             }
@@ -133,9 +167,7 @@ export default function ComicViewer() {
           }
         }
 
-        // 如果没有完整的历史记录，需要执行文件夹选择
         await handleFolderSelect();
-        // 移除查询参数
         setSearchParams({});
       };
 
@@ -143,119 +175,139 @@ export default function ComicViewer() {
     }
   }, [searchParams, setSearchParams, handleFolderSelect, actions]);
 
+  const progressValue = state.loadingProgress || 0;
+  const progressCount = state.imageUrls.length;
+  const totalCount = state.files.length;
+
   return (
-    <div className="h-screen bg-gray-900 flex">
+    <div className="flex h-screen bg-gray-900">
       {!isFullscreen && (
-        <div className="fixed left-0 top-0 bottom-0 z-40">
+        <div className="fixed bottom-0 left-0 top-0 z-40">
           <Toolbar
-          onFolderSelect={handleFolderSelect}
-          currentFileName={state.files[state.currentIndex]?.name}
-          currentIndex={state.currentIndex}
-          totalFiles={state.files.length}
-          zoom={state.zoom}
-          onZoomIn={actions.zoomIn}
-          onZoomOut={actions.zoomOut}
-          onResetZoom={actions.resetZoom}
-          viewMode={state.viewMode}
-          onToggleViewMode={actions.toggleViewMode}
-          imageWidth={state.imageWidth}
-          onImageWidthChange={actions.setImageWidth}
-          imagesPerGroup={imagesPerGroup}
-          onImagesPerGroupChange={setImagesPerGroup}
-          onToggleFullscreen={toggleFullscreen}
-        />
+            onFolderSelect={handleFolderSelect}
+            onPrevChapter={() => void openChapterBySequence(prevChapter)}
+            onNextChapter={() => void openChapterBySequence(nextChapter)}
+            hasPrevChapter={Boolean(prevChapter)}
+            hasNextChapter={Boolean(nextChapter)}
+            currentChapterNumber={
+              currentChapterIndex >= 0 ? currentChapterIndex + 1 : undefined
+            }
+            totalChapters={chapterSequence.length || undefined}
+            prevChapterName={prevChapter?.name}
+            nextChapterName={nextChapter?.name}
+            folderName={state.folderName}
+            folderPath={state.folderPath}
+            currentFileName={state.files[state.currentIndex]?.name}
+            currentIndex={state.currentIndex}
+            totalFiles={state.files.length}
+            zoom={state.zoom}
+            onZoomIn={actions.zoomIn}
+            onZoomOut={actions.zoomOut}
+            onResetZoom={actions.resetZoom}
+            viewMode={state.viewMode}
+            onToggleViewMode={actions.toggleViewMode}
+            imageWidth={state.imageWidth}
+            onImageWidthChange={actions.setImageWidth}
+            imagesPerGroup={imagesPerGroup}
+            onImagesPerGroupChange={setImagesPerGroup}
+            onToggleFullscreen={toggleFullscreen}
+          />
         </div>
       )}
 
       <div
-        className={`flex-1 overflow-hidden relative ${isFullscreen ? "ml-0" : "ml-[280px]"}`}
+        className={`relative flex-1 overflow-hidden ${isFullscreen ? "ml-0" : "ml-[320px]"}`}
       >
-        {/* 恢复提示 */}
-        {restoreHistory && (
-          <div className="absolute top-0 left-0 right-0 bg-blue-600 text-white px-4 py-2 text-center text-sm z-50">
-            从历史记录恢复: {restoreHistory.folderName} - 第{" "}
-            {restoreHistory.currentIndex + 1} 页
-            <button
-              onClick={() => {  
-                setRestoreHistory(null);
-                sessionStorage.removeItem("continueReading");
-              }}
-              className="ml-4 text-blue-200 hover:text-white"
-            >
-              ✕
-            </button>
+        <div className="flex h-full overflow-hidden">
+          <div className="relative flex-1 overflow-hidden">
+            {restoreHistory && (
+              <div className="absolute left-0 right-0 top-0 z-50 bg-blue-600 px-4 py-2 text-center text-sm text-white">
+                从历史记录恢复: {restoreHistory.folderName} - 第{" "}
+                {restoreHistory.currentIndex + 1} 页
+                <button
+                  onClick={() => {
+                    setRestoreHistory(null);
+                    sessionStorage.removeItem("continueReading");
+                  }}
+                  className="ml-4 text-blue-200 hover:text-white"
+                >
+                  ×
+                </button>
+              </div>
+            )}
+
+            <ImageViewer
+              imageUrl={state.imageUrl}
+              currentFileName={state.files[state.currentIndex]?.name}
+              zoom={state.zoom}
+              onWheel={actions.handleWheel}
+              viewMode={state.viewMode}
+              imageWidth={state.imageWidth}
+              imageUrls={state.imageUrls}
+              files={state.files}
+              scrollPosition={
+                state.viewMode === "scroll" ? state.scrollPosition : undefined
+              }
+              onScrollPositionChange={
+                state.viewMode === "scroll"
+                  ? actions.onScrollPositionChange
+                  : undefined
+              }
+              onLoadNextFolder={
+                state.viewMode === "scroll" ? actions.loadNextFolder : undefined
+              }
+              onCurrentImageChange={
+                state.viewMode === "scroll"
+                  ? actions.onCurrentImageChange
+                  : undefined
+              }
+              isLoading={state.isLoading}
+              imagesPerGroup={imagesPerGroup}
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={toggleFullscreen}
+              currentIndex={state.currentIndex}
+              totalFiles={state.files.length}
+              scrollPositionRatio={
+                state.viewMode === "scroll" &&
+                (state.scrollHeight ?? 0) > 0 &&
+                state.scrollPosition !== undefined
+                  ? state.scrollPosition / (state.scrollHeight ?? 1)
+                  : undefined
+              }
+              fullscreenImageFit={fullscreenImageFit}
+              onFullscreenImageFitChange={setFullscreenImageFit}
+            />
           </div>
-        )}
-        <ImageViewer
-          imageUrl={state.imageUrl}
-          currentFileName={state.files[state.currentIndex]?.name}
-          zoom={state.zoom}
-          onWheel={actions.handleWheel}
-          viewMode={state.viewMode}
-          imageWidth={state.imageWidth}
-          imageUrls={state.imageUrls}
-          files={state.files}
-          scrollPosition={
-            state.viewMode === "scroll" ? state.scrollPosition : undefined
-          }
-          onScrollPositionChange={
-            state.viewMode === "scroll"
-              ? actions.onScrollPositionChange
-              : undefined
-          }
-          onLoadNextFolder={
-            state.viewMode === "scroll" ? actions.loadNextFolder : undefined
-          }
-          onCurrentImageChange={
-            state.viewMode === "scroll"
-              ? actions.onCurrentImageChange
-              : undefined
-          }
-          isLoading={state.isLoading}
-          imagesPerGroup={imagesPerGroup}
-          isFullscreen={isFullscreen}
-          onToggleFullscreen={toggleFullscreen}
-          currentIndex={state.currentIndex}
-          totalFiles={state.files.length}
-          scrollPositionRatio={
-            state.viewMode === "scroll" &&
-            (state.scrollHeight ?? 0) > 0 &&
-            state.scrollPosition !== undefined
-              ? state.scrollPosition / (state.scrollHeight ?? 1)
-              : undefined
-          }
-          fullscreenImageFit={fullscreenImageFit}
-          onFullscreenImageFitChange={setFullscreenImageFit}
-        />
+
+          {state.viewMode === "page" && !isFullscreen && (
+            <Navigation
+              files={state.files}
+              currentIndex={state.currentIndex}
+              onPrevPage={actions.prevPage}
+              onNextPage={actions.nextPage}
+              onGoToPage={actions.goToPage}
+              onLoadNextFolder={actions.loadNextFolder}
+            />
+          )}
+        </div>
+
         {state.isLoading && (
-          <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-50">
-            <div className="bg-gray-800 rounded-lg p-6 text-center">
-              <div className="text-white text-lg mb-4">正在加载图片...</div>
-              <div className="w-64 bg-gray-700 rounded-full h-2 mb-2">
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70">
+            <div className="rounded-xl border border-white/10 bg-gray-800 px-6 py-5 text-center shadow-2xl">
+              <div className="mb-4 text-lg text-white">正在加载图片...</div>
+              <div className="mb-2 h-2 w-72 rounded-full bg-gray-700">
                 <div
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${state.loadingProgress || 0}%` }}
+                  className="h-2 rounded-full bg-blue-600 transition-all duration-300"
+                  style={{ width: `${progressValue}%` }}
                 />
               </div>
-              <div className="text-gray-300 text-sm">
-                {state.loadingProgress || 0}% ({state.imageUrls.length} /{" "}
-                {state.files.length})
+              <div className="text-sm text-gray-300">
+                {progressValue}% ({progressCount} / {totalCount})
               </div>
             </div>
           </div>
         )}
       </div>
-
-      {state.viewMode === "page" && !isFullscreen && (
-        <Navigation
-          files={state.files}
-          currentIndex={state.currentIndex}
-          onPrevPage={actions.prevPage}
-          onNextPage={actions.nextPage}
-          onGoToPage={actions.goToPage}
-          onLoadNextFolder={actions.loadNextFolder}
-        />
-      )}
     </div>
   );
 }

@@ -29,6 +29,7 @@ export const useComicViewer = () => {
   const [imageWidth, setImageWidth] = useState<number>(600);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [folderName, setFolderName] = useState<string>("");
+  const [folderPath, setFolderPath] = useState<string>("");
   const [scrollPosition, setScrollPosition] = useState<number>(0);
   const [scrollHeight, setScrollHeight] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -49,6 +50,7 @@ export const useComicViewer = () => {
           const sortedFiles = sortFiles(history.files);
           setFiles(sortedFiles);
           setFolderName(history.folderName);
+          setFolderPath(history.folderPath);
           sessionStorage.setItem("currentFolderPath", history.folderPath);
 
           isLoadingNextFolderRef.current = false;
@@ -163,6 +165,7 @@ export const useComicViewer = () => {
 
       setFiles(fileList);
       setFolderName(folderInfo.name);
+      setFolderPath(folderInfo.path);
       // 保存文件夹路径到sessionStorage，用于历史记录
       sessionStorage.setItem("currentFolderPath", folderInfo.path);
 
@@ -320,6 +323,7 @@ export const useComicViewer = () => {
       setScrollPosition(0);
       setScrollHeight(0);
       setFolderName(nextFolder.name);
+      setFolderPath(nextFolder.path);
       sessionStorage.setItem("currentFolderPath", nextFolder.path);
       setIsLoading(true);
       setLoadingProgress(0);
@@ -602,6 +606,8 @@ export const useComicViewer = () => {
     viewMode,
     imageWidth,
     imageUrls,
+    folderName,
+    folderPath,
     scrollPosition,
     scrollHeight,
     isLoading,

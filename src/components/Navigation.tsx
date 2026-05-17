@@ -76,7 +76,9 @@ export default function Navigation({
           title="直接翻到下一文件夹"
         >
           <svg className="w-5 h-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12h10" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 7l5 5-5 5" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 6v12" />
           </svg>
         </button>
       )}

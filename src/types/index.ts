@@ -13,6 +13,8 @@ export interface ComicViewerState {
   viewMode: ViewMode;
   imageWidth: number;
   imageUrls: string[];
+  folderName: string;
+  folderPath: string;
   scrollPosition?: number;
   scrollHeight?: number;
   isLoading?: boolean;

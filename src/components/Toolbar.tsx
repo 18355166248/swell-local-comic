@@ -1,9 +1,21 @@
+import { useEffect, useState } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate } from "react-router";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { ViewMode } from "../types";
 
 interface ToolbarProps {
   onFolderSelect: () => void;
+  onPrevChapter?: () => void;
+  onNextChapter?: () => void;
+  hasPrevChapter?: boolean;
+  hasNextChapter?: boolean;
+  currentChapterNumber?: number;
+  totalChapters?: number;
+  prevChapterName?: string;
+  nextChapterName?: string;
+  folderName?: string;
+  folderPath?: string;
   currentFileName?: string;
   currentIndex: number;
   totalFiles: number;
@@ -20,8 +32,38 @@ interface ToolbarProps {
   onToggleFullscreen?: () => void;
 }
 
+const modeLabel: Record<ViewMode, string> = {
+  page: "分页",
+  scroll: "滚动",
+};
+
+const formatProgress = (currentIndex: number, totalFiles: number) => {
+  if (totalFiles <= 0) return "未打开";
+  return `${currentIndex + 1} / ${totalFiles}`;
+};
+
+const clampNumericInput = (
+  value: number,
+  min: number,
+  max: number,
+  fallback: number,
+) => {
+  if (Number.isNaN(value)) return fallback;
+  return Math.max(min, Math.min(max, value));
+};
+
 export default function Toolbar({
   onFolderSelect,
+  onPrevChapter,
+  onNextChapter,
+  hasPrevChapter = false,
+  hasNextChapter = false,
+  currentChapterNumber,
+  totalChapters,
+  prevChapterName,
+  nextChapterName,
+  folderName,
+  folderPath,
   currentFileName,
   currentIndex,
   totalFiles,
@@ -38,212 +80,395 @@ export default function Toolbar({
   onToggleFullscreen,
 }: ToolbarProps) {
   const navigate = useNavigate();
+  const hasFiles = totalFiles > 0;
+  const [isPathExpanded, setIsPathExpanded] = useState(false);
+  const [isScrollSettingsOpen, setIsScrollSettingsOpen] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "done" | "error">("idle");
+
+  useEffect(() => {
+    if (copyState === "idle") return;
+    const timer = window.setTimeout(() => setCopyState("idle"), 1600);
+    return () => window.clearTimeout(timer);
+  }, [copyState]);
 
   const handleClose = async () => {
     try {
-      console.log("🔴 [窗口控制] 尝试关闭窗口");
-      const window = getCurrentWindow();
-      console.log("🔴 [窗口控制] 获取窗口对象成功:", window);
-      await window.close();
-      console.log("🔴 [窗口控制] 关闭窗口成功");
+      await getCurrentWindow().close();
     } catch (error) {
-      console.error("🔴 [窗口控制] 关闭窗口失败:", error);
+      console.error("关闭窗口失败:", error);
     }
   };
 
   const handleMinimize = async () => {
     try {
-      console.log("🔵 [窗口控制] 尝试最小化窗口");
-      const window = getCurrentWindow();
-      console.log("🔵 [窗口控制] 获取窗口对象成功:", window);
-      await window.minimize();
-      console.log("🔵 [窗口控制] 最小化窗口成功");
+      await getCurrentWindow().minimize();
     } catch (error) {
-      console.error("🔵 [窗口控制] 最小化窗口失败:", error);
+      console.error("最小化窗口失败:", error);
     }
   };
 
   const handleMaximize = async () => {
     try {
-      console.log("🟢 [窗口控制] 尝试最大化窗口");
-      const window = getCurrentWindow();
-      console.log("🟢 [窗口控制] 获取窗口对象成功:", window);
-      await window.toggleMaximize();
-      console.log("🟢 [窗口控制] 最大化窗口成功");
+      await getCurrentWindow().toggleMaximize();
     } catch (error) {
-      console.error("🟢 [窗口控制] 最大化窗口失败:", error);
+      console.error("切换窗口尺寸失败:", error);
     }
   };
 
-  const handleDrag = async (e: React.MouseEvent) => {
-    e.preventDefault();
+  const handleDrag = async (event: ReactMouseEvent) => {
+    event.preventDefault();
     try {
-      console.log("🟡 [窗口控制] 尝试开始拖拽窗口");
-      const window = getCurrentWindow();
-      console.log("🟡 [窗口控制] 获取窗口对象成功:", window);
-      await window.startDragging();
-      console.log("🟡 [窗口控制] 开始拖拽窗口成功");
+      await getCurrentWindow().startDragging();
     } catch (error) {
-      console.error("🟡 [窗口控制] 开始拖拽窗口失败:", error);
+      console.error("拖拽窗口失败:", error);
     }
   };
+
+  const handleCopyPath = async () => {
+    if (!folderPath) return;
+    try {
+      await navigator.clipboard.writeText(folderPath);
+      setCopyState("done");
+    } catch (error) {
+      console.error("复制路径失败:", error);
+      setCopyState("error");
+    }
+  };
+
+  const showScrollSettings = viewMode === "scroll" && isScrollSettingsOpen;
 
   return (
-    <div className="bg-gray-800 h-full w-[280px] p-4 flex flex-col text-white border-r border-gray-700">
-      {/* 窗口控制按钮 */}
-      <div className="flex items-center justify-end space-x-2 mb-4 pb-4 border-b border-gray-700">
-        <button
-          onMouseDown={handleDrag}
-          className="w-6 h-6 flex items-center justify-center bg-gray-700 hover:bg-gray-600 rounded transition-colors cursor-move"
-          title="拖拽窗口"
-        >
-          <span className="text-xs">⊞</span>
-        </button>
-        <button
-          onClick={handleMinimize}
-          className="w-6 h-6 flex items-center justify-center bg-gray-700 hover:bg-gray-600 rounded transition-colors"
-          title="最小化"
-        >
-          <span className="text-xs">−</span>
-        </button>
-        <button
-          onClick={handleMaximize}
-          className="w-6 h-6 flex items-center justify-center bg-gray-700 hover:bg-gray-600 rounded transition-colors"
-          title="最大化"
-        >
-          <span className="text-xs">□</span>
-        </button>
-        <button
-          onClick={handleClose}
-          className="w-6 h-6 flex items-center justify-center bg-red-600 hover:bg-red-700 rounded transition-colors"
-          title="关闭"
-        >
-          <span className="text-xs">×</span>
-        </button>
-      </div>
-
-      <div className="flex flex-col space-y-4">
-        <button
-          onClick={() => navigate("/")}
-          className="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition-colors w-full"
-        >
-          返回书库
-        </button>
-        <button
-          onClick={onFolderSelect}
-          className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors w-full"
-        >
-          打开图片文件夹
-        </button>
-        {totalFiles > 0 && onToggleFullscreen && (
-          <button
-            onClick={onToggleFullscreen}
-            className="bg-amber-600 hover:bg-amber-700 px-4 py-2 rounded-lg transition-colors w-full flex items-center justify-center gap-2"
-            title="全屏看图 (ESC 退出)"
+    <aside className="flex h-full w-[320px] flex-col border-r border-white/10 bg-[#0c1117] text-white">
+      <div className="border-b border-white/10 px-4 py-3">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div
+            onMouseDown={handleDrag}
+            className="flex min-w-0 flex-1 cursor-move items-center gap-2 rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2"
+            title="拖拽窗口"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-            </svg>
-            全屏
-          </button>
-        )}
-        {totalFiles > 0 && (
-          <div className="text-sm text-gray-300 space-y-2">
-            {viewMode === "scroll" ? (
-              <>
-                <div className="text-amber-300">
-                  当前: {currentIndex + 1} / {totalFiles} 页
-                </div>
-                <div className="text-blue-500 break-words">
-                  文件: {currentFileName}
-                </div>
-              </>
-            ) : (
-              <div>
-                {currentIndex + 1} / {totalFiles} - {currentFileName}
-              </div>
+            <span className="text-sm text-gray-400">阅读器</span>
+            {hasFiles && (
+              <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-xs text-blue-200">
+                {modeLabel[viewMode]}
+              </span>
             )}
           </div>
-        )}
-      </div>
-
-      {totalFiles > 0 && (
-        <div className="flex flex-col space-y-4 mt-6 pt-6 border-t border-gray-700">
-          <button
-            onClick={onToggleViewMode}
-            className={`px-3 py-2 rounded transition-colors w-full ${
-              viewMode === "scroll"
-                ? "bg-green-600 hover:bg-green-700"
-                : "bg-gray-700 hover:bg-gray-600"
-            }`}
-            title={viewMode === "scroll" ? "切换到分页模式" : "切换到滚动模式"}
-          >
-            {viewMode === "scroll" ? "📜 滚动" : "📄 分页"}
-          </button>
-
-          {viewMode === "scroll" && (
-            <>
-              <div className="flex flex-col space-y-2">
-                <label className="text-sm text-gray-300">宽度:</label>
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="number"
-                    min="200"
-                    max="2000"
-                    step="50"
-                    value={imageWidth}
-                    onChange={(e) => onImageWidthChange(Number(e.target.value))}
-                    className="bg-gray-700 text-white px-2 py-1 rounded w-full text-sm"
-                  />
-                  <span className="text-sm text-gray-400">px</span>
-                </div>
-              </div>
-              <div className="flex flex-col space-y-2">
-                <label className="text-sm text-gray-300">每组:</label>
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="number"
-                    min="1"
-                    max="20"
-                    step="1"
-                    value={imagesPerGroup}
-                    onChange={(e) =>
-                      onImagesPerGroupChange(Number(e.target.value))
-                    }
-                    className="bg-gray-700 text-white px-2 py-1 rounded w-full text-sm"
-                    title="每组图片数量，默认1（每张图片单独显示），可以配置成5（每5张合成一张）"
-                  />
-                  <span className="text-sm text-gray-400">张</span>
-                </div>
-              </div>
-            </>
-          )}
-
-          <div className="flex flex-col space-y-2">
-            <label className="text-sm text-gray-300">缩放:</label>
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={onZoomOut}
-                className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition-colors flex-1"
-              >
-                缩小
-              </button>
-              <button
-                onClick={onResetZoom}
-                className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition-colors flex-1"
-              >
-                {Math.round(zoom * 100)}%
-              </button>
-              <button
-                onClick={onZoomIn}
-                className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition-colors flex-1"
-              >
-                放大
-              </button>
-            </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleMinimize}
+              className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.04] text-gray-300 transition-colors hover:bg-white/[0.08] hover:text-white"
+              title="最小化"
+            >
+              -
+            </button>
+            <button
+              onClick={handleMaximize}
+              className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.04] text-gray-300 transition-colors hover:bg-white/[0.08] hover:text-white"
+              title="最大化 / 还原"
+            >
+              □
+            </button>
+            <button
+              onClick={handleClose}
+              className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-600/85 text-white transition-colors hover:bg-red-500"
+              title="关闭"
+            >
+              ×
+            </button>
           </div>
         </div>
-      )}
-    </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => navigate("/")}
+            className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-gray-100 transition-colors hover:bg-white/[0.08]"
+          >
+            返回书库
+          </button>
+          <button
+            onClick={onFolderSelect}
+            className="rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
+          >
+            打开目录
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 space-y-5 overflow-y-auto px-4 py-4">
+        <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-medium text-gray-100">当前阅读</div>
+              <div className="mt-1 text-xs text-gray-500">优先看位置，再调参数</div>
+            </div>
+            {hasFiles && (
+              <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs text-emerald-200">
+                {formatProgress(currentIndex, totalFiles)}
+              </span>
+            )}
+          </div>
+
+          <div className="space-y-3 text-sm">
+            <div>
+              <div className="mb-1 text-xs uppercase tracking-wide text-gray-500">
+                章节目录
+              </div>
+              <div className="rounded-xl bg-[#111821] px-3 py-2 text-gray-100">
+                <div className="truncate font-medium">
+                  {folderName || "尚未打开目录"}
+                </div>
+                <div
+                  className={`mt-1 text-xs text-gray-500 ${
+                    isPathExpanded ? "break-all" : "truncate"
+                  }`}
+                  title={folderPath}
+                >
+                  {folderPath || "打开章节后会在这里显示完整路径"}
+                </div>
+                {folderPath && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      onClick={() => setIsPathExpanded((prev) => !prev)}
+                      className="rounded-lg bg-white/[0.05] px-2.5 py-1 text-xs text-gray-200 transition-colors hover:bg-white/[0.08]"
+                    >
+                      {isPathExpanded ? "收起路径" : "展开路径"}
+                    </button>
+                    <button
+                      onClick={handleCopyPath}
+                      className="rounded-lg bg-white/[0.05] px-2.5 py-1 text-xs text-gray-200 transition-colors hover:bg-white/[0.08]"
+                    >
+                      {copyState === "done"
+                        ? "已复制"
+                        : copyState === "error"
+                          ? "复制失败"
+                          : "复制路径"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-1 text-xs uppercase tracking-wide text-gray-500">
+                章节导航
+              </div>
+              <div className="space-y-2 rounded-xl bg-[#111821] p-2">
+                <button
+                  onClick={onPrevChapter}
+                  disabled={!hasPrevChapter}
+                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
+                  title={prevChapterName || "没有上一章节"}
+                >
+                  <div className="text-xs text-gray-500">上一章节</div>
+                  <div className="mt-1 truncate">
+                    {prevChapterName || "已到第一章"}
+                  </div>
+                </button>
+
+                <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-sm text-blue-50">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs text-blue-200/70">当前章节</div>
+                    {currentChapterNumber && totalChapters ? (
+                      <div className="text-xs text-blue-100/80">
+                        第 {currentChapterNumber} / {totalChapters} 章
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="mt-1 truncate font-medium">
+                    {folderName || "尚未打开目录"}
+                  </div>
+                </div>
+
+                <button
+                  onClick={onNextChapter}
+                  disabled={!hasNextChapter}
+                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
+                  title={nextChapterName || "没有下一章节"}
+                >
+                  <div className="text-xs text-gray-500">下一章节</div>
+                  <div className="mt-1 truncate">
+                    {nextChapterName || "已到最后一章"}
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl bg-[#111821] px-3 py-2">
+                <div className="text-xs uppercase tracking-wide text-gray-500">
+                  阅读模式
+                </div>
+                <div className="mt-1 font-medium text-gray-100">
+                  {modeLabel[viewMode]}
+                </div>
+              </div>
+              <div className="rounded-xl bg-[#111821] px-3 py-2">
+                <div className="text-xs uppercase tracking-wide text-gray-500">
+                  当前图片
+                </div>
+                <div className="mt-1 font-medium text-gray-100">
+                  {hasFiles ? currentFileName || "未命名图片" : "未打开"}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {hasFiles && (
+          <>
+            <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+              <div className="mb-3 text-sm font-medium text-gray-100">显示方式</div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => viewMode === "scroll" || onToggleViewMode()}
+                  className={`rounded-xl px-3 py-2 text-sm transition-colors ${
+                    viewMode === "scroll"
+                      ? "bg-blue-600 text-white"
+                      : "bg-[#111821] text-gray-300 hover:bg-white/[0.08]"
+                  }`}
+                >
+                  滚动
+                </button>
+                <button
+                  onClick={() => viewMode === "page" || onToggleViewMode()}
+                  className={`rounded-xl px-3 py-2 text-sm transition-colors ${
+                    viewMode === "page"
+                      ? "bg-blue-600 text-white"
+                      : "bg-[#111821] text-gray-300 hover:bg-white/[0.08]"
+                  }`}
+                >
+                  分页
+                </button>
+              </div>
+
+              {onToggleFullscreen && (
+                <button
+                  onClick={onToggleFullscreen}
+                  className="mt-3 w-full rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100 transition-colors hover:bg-amber-500/20"
+                  title="全屏看图 (ESC 退出)"
+                >
+                  全屏查看
+                </button>
+              )}
+            </section>
+
+            <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="text-sm font-medium text-gray-100">缩放</div>
+                <button
+                  onClick={onResetZoom}
+                  className="rounded-lg bg-[#111821] px-2.5 py-1 text-xs text-gray-200 transition-colors hover:bg-white/[0.08]"
+                >
+                  {Math.round(zoom * 100)}%
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={onZoomOut}
+                  className="rounded-xl bg-[#111821] px-3 py-2 text-sm text-gray-200 transition-colors hover:bg-white/[0.08]"
+                >
+                  缩小
+                </button>
+                <button
+                  onClick={onZoomIn}
+                  className="rounded-xl bg-[#111821] px-3 py-2 text-sm text-gray-200 transition-colors hover:bg-white/[0.08]"
+                >
+                  放大
+                </button>
+              </div>
+            </section>
+
+            {viewMode === "scroll" && (
+              <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                <button
+                  onClick={() => setIsScrollSettingsOpen((prev) => !prev)}
+                  className="flex w-full items-center justify-between text-left"
+                >
+                  <div>
+                    <div className="text-sm font-medium text-gray-100">滚动模式</div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      平时不常改，按需展开
+                    </div>
+                  </div>
+                  <span className="text-sm text-gray-400">
+                    {isScrollSettingsOpen ? "收起" : "展开"}
+                  </span>
+                </button>
+
+                {showScrollSettings && (
+                  <div className="mt-4 space-y-3">
+                    <div>
+                      <div className="mb-1 text-xs uppercase tracking-wide text-gray-500">
+                        图片宽度
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="200"
+                          max="2000"
+                          step="50"
+                          value={imageWidth}
+                          onChange={(event) =>
+                            onImageWidthChange(
+                              clampNumericInput(
+                                Number(event.target.value),
+                                200,
+                                2000,
+                                imageWidth,
+                              ),
+                            )
+                          }
+                          className="w-full rounded-xl border border-white/10 bg-[#111821] px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                        />
+                        <span className="text-xs text-gray-500">px</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="mb-1 text-xs uppercase tracking-wide text-gray-500">
+                        每组张数
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="1"
+                          max="20"
+                          step="1"
+                          value={imagesPerGroup}
+                          onChange={(event) =>
+                            onImagesPerGroupChange(
+                              clampNumericInput(
+                                Number(event.target.value),
+                                1,
+                                20,
+                                imagesPerGroup,
+                              ),
+                            )
+                          }
+                          className="w-full rounded-xl border border-white/10 bg-[#111821] px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                        />
+                        <span className="text-xs text-gray-500">张</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
+
+            <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+              <div className="mb-3 text-sm font-medium text-gray-100">快捷键</div>
+              <div className="grid grid-cols-2 gap-2 text-xs text-gray-300">
+                <div className="rounded-xl bg-[#111821] px-3 py-2">← / A 上一页</div>
+                <div className="rounded-xl bg-[#111821] px-3 py-2">→ / D 下一页</div>
+                <div className="rounded-xl bg-[#111821] px-3 py-2">空格 下一页</div>
+                <div className="rounded-xl bg-[#111821] px-3 py-2">ESC 退出全屏</div>
+                <div className="rounded-xl bg-[#111821] px-3 py-2">+ 放大</div>
+                <div className="rounded-xl bg-[#111821] px-3 py-2">- 缩小</div>
+              </div>
+            </section>
+          </>
+        )}
+      </div>
+    </aside>
   );
 }
