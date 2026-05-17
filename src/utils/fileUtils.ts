@@ -1,5 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ComicFile, FolderInfo, ImageFileInfo } from "../types";
+import type {
+  ComicFile,
+  ComicLibraryScanResult,
+  FolderInfo,
+  ImageFileInfo,
+} from "../types";
 
 console.log("🚀 ~ invoke:", invoke);
 // 支持的图片格式
@@ -152,6 +157,19 @@ export const scanImageFiles = async (
     return files;
   } catch (error) {
     console.error("扫描图片文件失败:", error);
+    throw error;
+  }
+};
+
+export const scanComicLibrary = async (
+  rootPath: string
+): Promise<ComicLibraryScanResult> => {
+  try {
+    return await invoke<ComicLibraryScanResult>("scan_comic_library", {
+      rootPath,
+    });
+  } catch (error) {
+    console.error("扫描漫画书库失败:", error);
     throw error;
   }
 };

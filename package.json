@@ -13,6 +13,7 @@
     "preview": "vite preview",
     "generate-icon": "node scripts/generate-icon.js",
     "clean": "node scripts/clean-cache.js",
+    "test:library": "node --test scripts/library-utils.test.mjs",
     "clean:build": "node scripts/clean-cache.js && pnpm generate-icon && pnpm exec tauri build && node scripts/copy-release.js"
   },
   "dependencies": {

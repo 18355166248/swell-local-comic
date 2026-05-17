@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate } from "react-router";
 import type { ReadingHistory } from "../types";
 import {
@@ -9,16 +9,14 @@ import {
 
 export default function History() {
   const navigate = useNavigate();
-  const [histories, setHistories] = useState<ReadingHistory[]>([]);
+  const [histories, setHistories] = useState<ReadingHistory[]>(() =>
+    getAllHistory()
+  );
 
-  useEffect(() => {
-    loadHistories();
-  }, []);
-
-  const loadHistories = () => {
+  const loadHistories = useCallback(() => {
     const allHistories = getAllHistory();
     setHistories(allHistories);
-  };
+  }, []);
 
   const handleDelete = (folderPath: string, folderName: string) => {
     if (confirm(`确定要删除 "${folderName}" 的阅读历史吗？`)) {
@@ -42,7 +40,7 @@ export default function History() {
       sessionStorage.setItem("currentFolderPath", history.folderPath);
     }
     // 携带参数表示是从继续阅读跳转过来的
-    navigate("/?fromContinueReading=true");
+    navigate("/viewer?fromContinueReading=true");
   };
 
   const formatTime = (timestamp: number) => {
@@ -100,36 +98,32 @@ export default function History() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-6">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-3xl font-bold">阅读历史</h1>
-          <div className="flex items-center space-x-4">
+    <main className="mx-auto max-w-6xl px-6 py-8">
+        <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">阅读历史</h1>
+          <p className="mt-1 text-sm text-gray-400">
+            从最近读过的章节继续阅读。
+          </p>
+        </div>
             {histories.length > 0 && (
               <button
                 onClick={handleClearAll}
-                className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-colors"
+              className="rounded bg-red-600 px-4 py-2 text-sm transition-colors hover:bg-red-700"
               >
                 清空全部
               </button>
             )}
-            <button
-              onClick={() => navigate("/")}
-              className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors"
-            >
-              返回阅读器
-            </button>
-          </div>
         </div>
 
         {histories.length === 0 ? (
           <div className="text-center py-20">
             <p className="text-gray-400 text-lg">暂无阅读历史</p>
             <button
-              onClick={() => navigate("/")}
-              className="mt-4 bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg transition-colors"
+            onClick={() => navigate("/")}
+            className="mt-4 rounded bg-blue-600 px-6 py-2 transition-colors hover:bg-blue-700"
             >
-              开始阅读
+            返回书库
             </button>
           </div>
         ) : (
@@ -220,7 +214,6 @@ export default function History() {
             ))}
           </div>
         )}
-      </div>
-    </div>
+    </main>
   );
 }

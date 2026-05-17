@@ -13,6 +13,12 @@ import {
   getNextSiblingFolder,
 } from "../utils/fileUtils";
 import { saveHistory } from "../utils/historyUtils";
+import { normalizeLibraryPathId } from "../utils/libraryUtils";
+
+interface ChapterSequenceItem {
+  name: string;
+  path: string;
+}
 
 export const useComicViewer = () => {
   const [files, setFiles] = useState<ComicFile[]>([]);
@@ -132,7 +138,22 @@ export const useComicViewer = () => {
       isLoadingNextFolderRef.current = false;
       hasNoMoreFoldersRef.current = false;
 
-      const folderInfo = await selectFolder();
+      const pendingFolder = sessionStorage.getItem("openComicFolder");
+      let folderInfo = null;
+
+      if (pendingFolder) {
+        try {
+          folderInfo = JSON.parse(pendingFolder);
+          sessionStorage.removeItem("openComicFolder");
+        } catch (error) {
+          console.error("解析待打开文件夹失败:", error);
+          sessionStorage.removeItem("openComicFolder");
+        }
+      }
+
+      if (!folderInfo) {
+        folderInfo = await selectFolder();
+      }
       if (!folderInfo) return;
 
       isLoadingNextFolderRef.current = false;
@@ -256,7 +277,35 @@ export const useComicViewer = () => {
       const currentFolderPath = sessionStorage.getItem("currentFolderPath");
       if (!currentFolderPath) return;
 
-      const nextFolder = await getNextSiblingFolder(currentFolderPath);
+      let nextFolder = null;
+      const chapterSequence = sessionStorage.getItem("comicChapterSequence");
+
+      if (chapterSequence) {
+        try {
+          const sequence: ChapterSequenceItem[] = JSON.parse(chapterSequence);
+          const currentSequenceIndex = sequence.findIndex(
+            (item) =>
+              normalizeLibraryPathId(item.path) ===
+              normalizeLibraryPathId(currentFolderPath)
+          );
+          if (
+            currentSequenceIndex >= 0 &&
+            currentSequenceIndex < sequence.length - 1
+          ) {
+            nextFolder = sequence[currentSequenceIndex + 1];
+          } else if (currentSequenceIndex === sequence.length - 1) {
+            hasNoMoreFoldersRef.current = true;
+            return;
+          }
+        } catch (error) {
+          console.error("解析章节序列失败:", error);
+          sessionStorage.removeItem("comicChapterSequence");
+        }
+      }
+
+      if (!nextFolder) {
+        nextFolder = await getNextSiblingFolder(currentFolderPath);
+      }
       if (!nextFolder) {
         hasNoMoreFoldersRef.current = true;
         return;

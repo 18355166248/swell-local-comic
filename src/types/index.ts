@@ -61,3 +61,32 @@ export interface ImageFileInfo {
   name: string;
   path: string;
 }
+
+export interface LibraryItem {
+  id: string;
+  name: string;
+  rootPath: string;
+  addedAt: number;
+  lastOpenedAt: number;
+}
+
+export interface ComicDirectoryNode {
+  name: string;
+  path: string;
+  children: ComicDirectoryNode[];
+  imageCount: number;
+  readable: boolean;
+}
+
+export interface ComicChapter {
+  name: string;
+  path: string;
+  relativePath: string;
+  imageCount: number;
+}
+
+export interface ComicLibraryScanResult {
+  root: FolderInfo;
+  tree: ComicDirectoryNode;
+  chapters: ComicChapter[];
+}

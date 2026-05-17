@@ -18,6 +18,7 @@ export default function ComicViewer() {
   const [fullscreenImageFit, setFullscreenImageFit] = useState<
     "original" | "fit"
   >("original");
+  const hasProcessedOpenFolder = useRef(false);
   const hasProcessedContinueReading = useRef(false);
 
   const toggleFullscreen = useCallback(async () => {
@@ -80,6 +81,21 @@ export default function ComicViewer() {
   useEffect(() => {
     // 判断如果是从继续阅读过来的，主动执行 handleFolderSelect
     const fromContinueReading = searchParams.get("fromContinueReading");
+    const openFolder = searchParams.get("openFolder");
+
+    if (openFolder !== "true") {
+      hasProcessedOpenFolder.current = false;
+    }
+
+    if (openFolder === "true" && !hasProcessedOpenFolder.current) {
+      hasProcessedOpenFolder.current = true;
+      const executeOpenFolder = async () => {
+        await actions.handleFolderSelect();
+        setSearchParams({});
+      };
+      executeOpenFolder();
+      return;
+    }
 
     // 如果查询参数变化了（从 true 变为其他值），重置标志
     if (fromContinueReading !== "true") {

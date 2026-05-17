@@ -1,7 +1,11 @@
-import type { ReadingHistory, ReadingHistoryInput } from "../types";
+import type { ComicChapter, ReadingHistory, ReadingHistoryInput } from "../types";
+import {
+  createReadHistoryInputFromChapter,
+  normalizeLibraryPathId,
+} from "./libraryUtils";
 
 const STORAGE_KEY = "comic_reading_history";
-const MAX_HISTORY_ITEMS = 50; // 限制历史记录数量
+const MAX_HISTORY_ITEMS = 500; // 限制历史记录数量
 
 // 获取所有历史记录
 export const getAllHistory = (): ReadingHistory[] => {
@@ -57,6 +61,41 @@ export const saveHistory = (history: ReadingHistoryInput): void => {
 };
 
 // 删除历史记录
+export const markChaptersAsRead = (chapters: ComicChapter[]): ReadingHistory[] => {
+  try {
+    const histories = getAllHistory();
+    const byPath = new Map(
+      histories.map((history) => [normalizeLibraryPathId(history.folderPath), history]),
+    );
+    const now = Date.now();
+
+    chapters.forEach((chapter, index) => {
+      const input = createReadHistoryInputFromChapter(chapter);
+      const key = normalizeLibraryPathId(input.folderPath);
+      const existing = byPath.get(key);
+      byPath.set(key, {
+        ...input,
+        firstReadTime: existing?.firstReadTime ?? now,
+        lastReadTime: now + index,
+      });
+    });
+
+    const nextHistories = Array.from(byPath.values()).sort(
+      (a, b) => b.lastReadTime - a.lastReadTime,
+    );
+
+    if (nextHistories.length > MAX_HISTORY_ITEMS) {
+      nextHistories.splice(MAX_HISTORY_ITEMS);
+    }
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextHistories));
+    return nextHistories;
+  } catch (error) {
+    console.error("批量标记已读失败:", error);
+    return getAllHistory();
+  }
+};
+
 export const deleteHistory = (folderPath: string): void => {
   try {
     const histories = getAllHistory();

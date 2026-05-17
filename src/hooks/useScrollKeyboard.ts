@@ -178,6 +178,7 @@ export function useScrollKeyboard({
     stopScrolling,
     onLoadNextFolderAtBottom,
     isLoading,
+    scrollContainerRef,
   ]);
 
   return {

@@ -15,6 +15,110 @@ pub struct FolderInfo {
   pub path: String,
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComicDirectoryNode {
+  pub name: String,
+  pub path: String,
+  pub children: Vec<ComicDirectoryNode>,
+  pub image_count: usize,
+  pub readable: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComicChapter {
+  pub name: String,
+  pub path: String,
+  pub relative_path: String,
+  pub image_count: usize,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComicLibraryScanResult {
+  pub root: FolderInfo,
+  pub tree: ComicDirectoryNode,
+  pub chapters: Vec<ComicChapter>,
+}
+
+fn is_supported_image(path: &Path) -> bool {
+  let image_extensions = ["jpg", "jpeg", "png", "gif", "webp", "bmp"];
+  path.extension()
+    .and_then(|extension| extension.to_str())
+    .map(|extension| image_extensions.contains(&extension.to_lowercase().as_str()))
+    .unwrap_or(false)
+}
+
+fn path_name(path: &Path) -> String {
+  path.file_name()
+    .and_then(|name| name.to_str())
+    .unwrap_or("Unknown")
+    .to_string()
+}
+
+fn scan_directory_node(
+  path: &Path,
+  root_path: &Path,
+  chapters: &mut Vec<ComicChapter>,
+) -> Result<ComicDirectoryNode, String> {
+  let entries = fs::read_dir(path).map_err(|e| format!("Failed to read directory: {}", e))?;
+  let mut child_dirs = Vec::new();
+  let mut image_count = 0usize;
+
+  for entry in entries {
+    let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+    let entry_path = entry.path();
+
+    if entry_path.is_dir() {
+      child_dirs.push(entry_path);
+    } else if entry_path.is_file() && is_supported_image(&entry_path) {
+      image_count += 1;
+    }
+  }
+
+  child_dirs.sort_by(|a, b| {
+    let name_a = a.file_name().and_then(|name| name.to_str()).unwrap_or("");
+    let name_b = b.file_name().and_then(|name| name.to_str()).unwrap_or("");
+    natord::compare(name_a, name_b)
+  });
+
+  let mut children = Vec::new();
+  for child_dir in child_dirs {
+    children.push(scan_directory_node(&child_dir, root_path, chapters)?);
+  }
+
+  let name = path_name(path);
+  let full_path = path.to_string_lossy().to_string();
+  let readable = image_count > 0;
+
+  if readable {
+    let relative_path = path
+      .strip_prefix(root_path)
+      .ok()
+      .map(|relative| {
+        let value = relative.to_string_lossy().replace('\\', "/");
+        if value.is_empty() { name.clone() } else { value }
+      })
+      .unwrap_or_else(|| name.clone());
+
+    chapters.push(ComicChapter {
+      name: name.clone(),
+      path: full_path.clone(),
+      relative_path,
+      image_count,
+    });
+  }
+
+  Ok(ComicDirectoryNode {
+    name,
+    path: full_path,
+    children,
+    image_count,
+    readable,
+  })
+}
+
 #[command]
 async fn select_folder() -> Result<Option<FolderInfo>, String> {
   match rfd::AsyncFileDialog::new().pick_folder().await {
@@ -86,6 +190,31 @@ async fn read_image_file(file_path: String) -> Result<Vec<u8>, String> {
 
 /// 获取当前文件夹同级的下一个文件夹（按名称排序后的下一个）
 #[command]
+async fn scan_comic_library(root_path: String) -> Result<ComicLibraryScanResult, String> {
+  tauri::async_runtime::spawn_blocking(move || {
+    let path = Path::new(&root_path);
+    if !path.exists() || !path.is_dir() {
+      return Err("Folder does not exist or is not a directory".to_string());
+    }
+
+    let mut chapters = Vec::new();
+    let tree = scan_directory_node(path, path, &mut chapters)?;
+    chapters.sort_by(|a, b| natord::compare(&a.relative_path, &b.relative_path));
+
+    Ok(ComicLibraryScanResult {
+      root: FolderInfo {
+        name: path_name(path),
+        path: path.to_string_lossy().to_string(),
+      },
+      tree,
+      chapters,
+    })
+  })
+  .await
+  .map_err(|error| format!("Failed to join scan task: {}", error))?
+}
+
+#[command]
 async fn get_next_sibling_folder(folder_path: String) -> Result<Option<FolderInfo>, String> {
   let path = Path::new(&folder_path);
   if !path.exists() || !path.is_dir() {
@@ -150,7 +279,8 @@ pub fn run() {
       select_folder,
       read_image_files,
       read_image_file,
-      get_next_sibling_folder
+      get_next_sibling_folder,
+      scan_comic_library
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

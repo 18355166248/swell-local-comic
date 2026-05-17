@@ -124,16 +124,16 @@ export default function Toolbar({
 
       <div className="flex flex-col space-y-4">
         <button
+          onClick={() => navigate("/")}
+          className="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition-colors w-full"
+        >
+          返回书库
+        </button>
+        <button
           onClick={onFolderSelect}
           className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors w-full"
         >
-          选择漫画文件夹
-        </button>
-        <button
-          onClick={() => navigate("/history")}
-          className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg transition-colors w-full"
-        >
-          阅读历史
+          打开图片文件夹
         </button>
         {totalFiles > 0 && onToggleFullscreen && (
           <button
