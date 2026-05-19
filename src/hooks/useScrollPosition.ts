@@ -80,23 +80,12 @@ export function useScrollPosition({
       if (currentHeight >= targetPosition + 50) {
         container.style.scrollBehavior = "auto";
         container.scrollTop = targetPosition;
-        // 恢复平滑滚动
-        setTimeout(() => {
-          if (container) {
-            container.style.scrollBehavior = "smooth";
-          }
-        }, 100);
       } else {
         // 内容高度不足，等待一下再试（最多等待1秒）
         setTimeout(() => {
           if (container && container.scrollHeight >= targetPosition + 50) {
             container.style.scrollBehavior = "auto";
             container.scrollTop = targetPosition;
-            setTimeout(() => {
-              if (container) {
-                container.style.scrollBehavior = "smooth";
-              }
-            }, 100);
           }
         }, 500);
       }

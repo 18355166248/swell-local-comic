@@ -148,7 +148,6 @@ export default function ImageViewer({
           className="h-full overflow-y-auto overflow-x-hidden scroll-mode-container"
           onWheel={isLoading ? undefined : onWheel}
           style={{
-            scrollBehavior: "smooth",
             pointerEvents: isLoading ? "none" : "auto",
             opacity: isLoading ? 0.5 : 1,
           }}

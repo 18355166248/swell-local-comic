@@ -11,11 +11,21 @@ interface UseScrollKeyboardOptions {
 }
 
 const AT_BOTTOM_THRESHOLD = 5;
+const BASE_SCROLL_PIXELS_PER_SECOND = 900;
+const MIN_SCROLL_PIXELS_PER_SECOND = 480;
 
 function isAtBottom(container: HTMLElement): boolean {
   const { scrollTop, scrollHeight, clientHeight } = container;
   const distanceToBottom = scrollHeight - scrollTop - clientHeight;
   return distanceToBottom <= AT_BOTTOM_THRESHOLD;
+}
+
+function getContinuousScrollSpeed(containerHeight: number, scrollRatio: number) {
+  return Math.max(
+    MIN_SCROLL_PIXELS_PER_SECOND,
+    containerHeight * scrollRatio * 2,
+    BASE_SCROLL_PIXELS_PER_SECOND * scrollRatio,
+  );
 }
 
 export function useScrollKeyboard({
@@ -25,8 +35,10 @@ export function useScrollKeyboard({
   onLoadNextFolderAtBottom,
   isLoading = false,
 }: UseScrollKeyboardOptions) {
-  const scrollIntervalRef = useRef<number | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
   const pressedKeyRef = useRef<string | null>(null);
+  const scrollDirectionRef = useRef<1 | -1 | null>(null);
+  const lastFrameTimeRef = useRef<number | null>(null);
 
   const handleScrollUp = useCallback(() => {
     if (scrollContainerRef.current) {
@@ -51,12 +63,90 @@ export function useScrollKeyboard({
   }, [scrollRatio, scrollContainerRef]);
 
   const stopScrolling = useCallback(() => {
-    if (scrollIntervalRef.current) {
-      clearInterval(scrollIntervalRef.current);
-      scrollIntervalRef.current = null;
-      pressedKeyRef.current = null;
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
     }
+    pressedKeyRef.current = null;
+    scrollDirectionRef.current = null;
+    lastFrameTimeRef.current = null;
   }, []);
+
+  const startContinuousScroll = useCallback(
+    (keyId: string, direction: 1 | -1) => {
+      if (scrollContainerRef.current === null) {
+        return;
+      }
+
+      stopScrolling();
+      pressedKeyRef.current = keyId;
+      scrollDirectionRef.current = direction;
+
+      const tick = (timestamp: number) => {
+        const container = scrollContainerRef.current;
+        const currentDirection = scrollDirectionRef.current;
+
+        if (!container || currentDirection === null) {
+          stopScrolling();
+          return;
+        }
+
+        if (currentDirection === 1) {
+          if (
+            onLoadNextFolderAtBottom &&
+            !isLoading &&
+            isAtBottom(container)
+          ) {
+            stopScrolling();
+            onLoadNextFolderAtBottom();
+            return;
+          }
+        }
+
+        if (lastFrameTimeRef.current === null) {
+          lastFrameTimeRef.current = timestamp;
+        }
+
+        const deltaTime = Math.min(
+          timestamp - lastFrameTimeRef.current,
+          32,
+        );
+        lastFrameTimeRef.current = timestamp;
+
+        const speed = getContinuousScrollSpeed(
+          container.clientHeight,
+          scrollRatio,
+        );
+        const distance = (speed * deltaTime) / 1000;
+
+        if (distance > 0) {
+          container.scrollTop += distance * currentDirection;
+        }
+
+        if (
+          currentDirection === 1 &&
+          onLoadNextFolderAtBottom &&
+          !isLoading &&
+          isAtBottom(container)
+        ) {
+          stopScrolling();
+          onLoadNextFolderAtBottom();
+          return;
+        }
+
+        animationFrameRef.current = requestAnimationFrame(tick);
+      };
+
+      animationFrameRef.current = requestAnimationFrame(tick);
+    },
+    [
+      isLoading,
+      onLoadNextFolderAtBottom,
+      scrollContainerRef,
+      scrollRatio,
+      stopScrolling,
+    ],
+  );
 
   useEffect(() => {
     if (viewMode !== "scroll") {
@@ -82,19 +172,10 @@ export function useScrollKeyboard({
       if (key === "w" || keyCode === "ArrowUp") {
         e.preventDefault();
         const keyId = keyCode === "ArrowUp" ? "ArrowUp" : "w";
-        // 如果已经有定时器在运行，不重复创建
-        if (scrollIntervalRef.current && pressedKeyRef.current === keyId) {
+        if (animationFrameRef.current !== null && pressedKeyRef.current === keyId) {
           return;
         }
-        // 清除之前的定时器（如果有）
-        stopScrolling();
-        // 立即执行一次
-        handleScrollUp();
-        // 设置持续滚动
-        pressedKeyRef.current = keyId;
-        scrollIntervalRef.current = setInterval(() => {
-          handleScrollUp();
-        }, 100); // 每100ms滚动一次
+        startContinuousScroll(keyId, -1);
       }
       // s 键或下箭头键向下滚动（已在底部时加载下一文件夹）
       else if (key === "s" || keyCode === "ArrowDown") {
@@ -113,30 +194,10 @@ export function useScrollKeyboard({
           return;
         }
 
-        // 如果已经有定时器在运行，不重复创建
-        if (scrollIntervalRef.current && pressedKeyRef.current === keyId) {
+        if (animationFrameRef.current !== null && pressedKeyRef.current === keyId) {
           return;
         }
-        // 清除之前的定时器（如果有）
-        stopScrolling();
-        // 立即执行一次（若执行后到达底部，下次 interval 会触发加载）
-        handleScrollDown();
-        // 设置持续滚动
-        pressedKeyRef.current = keyId;
-        scrollIntervalRef.current = setInterval(() => {
-          const c = scrollContainerRef.current;
-          if (
-            c &&
-            onLoadNextFolderAtBottom &&
-            !isLoading &&
-            isAtBottom(c)
-          ) {
-            stopScrolling();
-            onLoadNextFolderAtBottom();
-            return;
-          }
-          handleScrollDown();
-        }, 100); // 每100ms滚动一次
+        startContinuousScroll(keyId, 1);
       }
     };
 
@@ -160,21 +221,27 @@ export function useScrollKeyboard({
       stopScrolling();
     };
 
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopScrolling();
+      }
+    };
+
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
     window.addEventListener("blur", handleBlur);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleBlur);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       stopScrolling();
     };
   }, [
     viewMode,
-    scrollRatio,
-    handleScrollUp,
-    handleScrollDown,
+    startContinuousScroll,
     stopScrolling,
     onLoadNextFolderAtBottom,
     isLoading,
