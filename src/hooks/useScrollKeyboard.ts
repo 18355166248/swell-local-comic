@@ -13,6 +13,10 @@ interface UseScrollKeyboardOptions {
 const AT_BOTTOM_THRESHOLD = 5;
 const BASE_SCROLL_PIXELS_PER_SECOND = 900;
 const MIN_SCROLL_PIXELS_PER_SECOND = 480;
+/** 按住超过该时间后启动连续滚动；短按仅步进滚动 */
+const HOLD_SCROLL_DELAY_MS = 150;
+/** 单次按键/点击的滚动距离倍率（相对 scrollRatio） */
+const TAP_SCROLL_MULTIPLIER = 1.25;
 
 function isAtBottom(container: HTMLElement): boolean {
   const { scrollTop, scrollHeight, clientHeight } = container;
@@ -36,33 +40,46 @@ export function useScrollKeyboard({
   isLoading = false,
 }: UseScrollKeyboardOptions) {
   const animationFrameRef = useRef<number | null>(null);
+  const holdDelayTimerRef = useRef<number | null>(null);
   const pressedKeyRef = useRef<string | null>(null);
   const scrollDirectionRef = useRef<1 | -1 | null>(null);
   const lastFrameTimeRef = useRef<number | null>(null);
 
+  const getTapScrollDistance = useCallback(
+    (container: HTMLElement) =>
+      container.clientHeight * scrollRatio * TAP_SCROLL_MULTIPLIER,
+    [scrollRatio],
+  );
+
   const handleScrollUp = useCallback(() => {
-    if (scrollContainerRef.current) {
-      const containerHeight = scrollContainerRef.current.clientHeight;
-      const scrollDistance = containerHeight * scrollRatio;
-      scrollContainerRef.current.scrollBy({
-        top: -scrollDistance,
-        behavior: "smooth",
-      });
-    }
-  }, [scrollRatio, scrollContainerRef]);
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    container.scrollBy({
+      top: -getTapScrollDistance(container),
+      behavior: "smooth",
+    });
+  }, [getTapScrollDistance, scrollContainerRef]);
 
   const handleScrollDown = useCallback(() => {
-    if (scrollContainerRef.current) {
-      const containerHeight = scrollContainerRef.current.clientHeight;
-      const scrollDistance = containerHeight * scrollRatio;
-      scrollContainerRef.current.scrollBy({
-        top: scrollDistance,
-        behavior: "smooth",
-      });
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    container.scrollBy({
+      top: getTapScrollDistance(container),
+      behavior: "smooth",
+    });
+  }, [getTapScrollDistance, scrollContainerRef]);
+
+  const clearHoldDelay = useCallback(() => {
+    if (holdDelayTimerRef.current !== null) {
+      clearTimeout(holdDelayTimerRef.current);
+      holdDelayTimerRef.current = null;
     }
-  }, [scrollRatio, scrollContainerRef]);
+  }, []);
 
   const stopScrolling = useCallback(() => {
+    clearHoldDelay();
     if (animationFrameRef.current !== null) {
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
@@ -70,7 +87,7 @@ export function useScrollKeyboard({
     pressedKeyRef.current = null;
     scrollDirectionRef.current = null;
     lastFrameTimeRef.current = null;
-  }, []);
+  }, [clearHoldDelay]);
 
   const startContinuousScroll = useCallback(
     (keyId: string, direction: 1 | -1) => {
@@ -148,6 +165,17 @@ export function useScrollKeyboard({
     ],
   );
 
+  const scheduleContinuousScroll = useCallback(
+    (keyId: string, direction: 1 | -1) => {
+      clearHoldDelay();
+      holdDelayTimerRef.current = window.setTimeout(() => {
+        holdDelayTimerRef.current = null;
+        startContinuousScroll(keyId, direction);
+      }, HOLD_SCROLL_DELAY_MS);
+    },
+    [clearHoldDelay, startContinuousScroll],
+  );
+
   useEffect(() => {
     if (viewMode !== "scroll") {
       stopScrolling();
@@ -172,10 +200,18 @@ export function useScrollKeyboard({
       if (key === "w" || keyCode === "ArrowUp") {
         e.preventDefault();
         const keyId = keyCode === "ArrowUp" ? "ArrowUp" : "w";
-        if (animationFrameRef.current !== null && pressedKeyRef.current === keyId) {
+        if (e.repeat) {
+          if (animationFrameRef.current !== null && pressedKeyRef.current === keyId) {
+            return;
+          }
+          scheduleContinuousScroll(keyId, -1);
           return;
         }
-        startContinuousScroll(keyId, -1);
+
+        stopScrolling();
+        pressedKeyRef.current = keyId;
+        handleScrollUp();
+        scheduleContinuousScroll(keyId, -1);
       }
       // s 键或下箭头键向下滚动（已在底部时加载下一文件夹）
       else if (key === "s" || keyCode === "ArrowDown") {
@@ -194,10 +230,18 @@ export function useScrollKeyboard({
           return;
         }
 
-        if (animationFrameRef.current !== null && pressedKeyRef.current === keyId) {
+        if (e.repeat) {
+          if (animationFrameRef.current !== null && pressedKeyRef.current === keyId) {
+            return;
+          }
+          scheduleContinuousScroll(keyId, 1);
           return;
         }
-        startContinuousScroll(keyId, 1);
+
+        stopScrolling();
+        pressedKeyRef.current = keyId;
+        handleScrollDown();
+        scheduleContinuousScroll(keyId, 1);
       }
     };
 
@@ -241,7 +285,9 @@ export function useScrollKeyboard({
     };
   }, [
     viewMode,
-    startContinuousScroll,
+    handleScrollUp,
+    handleScrollDown,
+    scheduleContinuousScroll,
     stopScrolling,
     onLoadNextFolderAtBottom,
     isLoading,
