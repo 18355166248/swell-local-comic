@@ -75,9 +75,11 @@ export default function AppShell() {
             data-tauri-drag-region
             className="flex min-w-0 flex-1 items-center gap-3 px-4"
           >
-            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-500/18 text-[11px] font-semibold text-blue-200">
-              SC
-            </div>
+            <img
+              src="/app-icon.png"
+              alt=""
+              className="h-6 w-6 shrink-0 rounded-md object-cover"
+            />
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold text-gray-100">
                 Swell Comic
