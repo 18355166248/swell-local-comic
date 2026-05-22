@@ -13,8 +13,8 @@ interface UseScrollKeyboardOptions {
 const AT_BOTTOM_THRESHOLD = 5;
 const BASE_SCROLL_PIXELS_PER_SECOND = 900;
 const MIN_SCROLL_PIXELS_PER_SECOND = 480;
-/** 按住超过该时间后启动连续滚动；短按仅步进滚动 */
-const HOLD_SCROLL_DELAY_MS = 150;
+/** 按住超过该时间后启动连续滚动；短按仅步进滚动（过短会把正常单击误判为长按） */
+const HOLD_SCROLL_DELAY_MS = 450;
 /** 单次按键/点击的滚动距离倍率（相对 scrollRatio） */
 const TAP_SCROLL_MULTIPLIER = 1.25;
 
