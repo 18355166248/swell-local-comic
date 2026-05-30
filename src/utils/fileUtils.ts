@@ -6,7 +6,6 @@ import type {
   ImageFileInfo,
 } from "../types";
 
-console.log("🚀 ~ invoke:", invoke);
 // 支持的图片格式
 export const IMAGE_EXTENSIONS = [
   ".jpg",
@@ -191,3 +190,42 @@ export const loadImageFile = async (file: ComicFile): Promise<string> => {
     throw error;
   }
 };
+
+/** 批量加载图片 URL，每批 10 张，通过 onProgress 回调报告进度 */
+export async function loadImagesInBatches(
+  files: ComicFile[],
+  onProgress: (urls: string[], progress: number) => void,
+): Promise<string[]> {
+  const batchSize = 10;
+  const urls: string[] = [];
+  for (let i = 0; i < files.length; i += batchSize) {
+    const batch = files.slice(i, i + batchSize);
+    const batchUrls = await Promise.all(
+      batch.map((file) => loadImageFile(file)),
+    );
+    urls.push(...batchUrls);
+    const progress = Math.round(((i + batchSize) / files.length) * 100);
+    onProgress([...urls], Math.min(progress, 100));
+    // 让出主线程以便浏览器渲染进度
+    await new Promise((resolve) => {
+      if (typeof requestIdleCallback !== "undefined") {
+        requestIdleCallback(() => resolve(undefined), { timeout: 100 });
+      } else {
+        setTimeout(() => resolve(undefined), 0);
+      }
+    });
+  }
+  return urls;
+}
+
+/**
+ * Revoke 不再需要的 blob URL，释放内存。
+ * 在切换文件夹或视图模式时调用，传入旧的 URL 数组。
+ */
+export function revokeImageUrls(urls: string[]): void {
+  for (const url of urls) {
+    if (url.startsWith("blob:")) {
+      URL.revokeObjectURL(url);
+    }
+  }
+}

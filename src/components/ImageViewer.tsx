@@ -156,6 +156,7 @@ export default function ImageViewer({
             {imageGroups.map((group, groupIndex) => (
               <div
                 key={groupIndex}
+                data-image-group={groupIndex}
                 className="flex w-full"
                 style={{
                   width: isFullscreen && fullscreenImageFit === "fit"

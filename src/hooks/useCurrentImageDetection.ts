@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { ViewMode } from "../types";
 
 interface UseCurrentImageDetectionOptions {
@@ -11,16 +11,21 @@ interface UseCurrentImageDetectionOptions {
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
 }
 
+/**
+ * 用 IntersectionObserver 检测当前可见的图片组。
+ * 不再用 getBoundingClientRect + scroll 事件强制回流。
+ */
 export function useCurrentImageDetection({
   viewMode,
   imageUrls,
   imagesPerGroup,
   onCurrentImageChange,
-  imageWidth,
-  zoom,
   scrollContainerRef,
 }: UseCurrentImageDetectionOptions) {
-  // 检测当前可见的图片索引（滚动模式）
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  // 记录每个元素当前的可见比例
+  const visibilityMapRef = useRef<Map<number, number>>(new Map());
+
   useEffect(() => {
     if (
       viewMode !== "scroll" ||
@@ -33,58 +38,63 @@ export function useCurrentImageDetection({
     const container = scrollContainerRef.current;
     if (!container) return;
 
-    const imageGroups = container.querySelectorAll("div.flex.w-full");
-    if (imageGroups.length === 0) return;
+    // 清理旧 observer
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+    }
+    visibilityMapRef.current.clear();
 
-    let scrollTimeout: number;
-    const handleScroll = () => {
-      clearTimeout(scrollTimeout);
-      scrollTimeout = setTimeout(() => {
-        const containerRect = container.getBoundingClientRect();
-        const containerTop = containerRect.top;
-        const viewportCenter = containerTop + container.clientHeight / 2;
+    const groups = container.querySelectorAll("[data-image-group]");
+    if (groups.length === 0) return;
 
-        let currentGroupIndex = 0;
-        let minDistance = Infinity;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-        imageGroups.forEach((group, index) => {
-          const groupRect = group.getBoundingClientRect();
-          const groupCenter = groupRect.top + groupRect.height / 2;
-          const distance = Math.abs(groupCenter - viewportCenter);
-
-          // 如果图片组在视口内，或者距离视口中心最近
-          if (
-            (groupRect.top <= viewportCenter &&
-              groupRect.bottom >= viewportCenter) ||
-            distance < minDistance
-          ) {
-            if (distance < minDistance) {
-              minDistance = distance;
-              currentGroupIndex = index;
-            }
-          }
-        });
-
-        // 将组索引映射回原始图片索引（返回该组第一张图片的索引）
-        const originalIndex = currentGroupIndex * imagesPerGroup;
-        onCurrentImageChange(originalIndex);
-      }, 100); // 防抖100ms
+    const pickBest = () => {
+      let bestIndex = 0;
+      let bestRatio = 0;
+      visibilityMapRef.current.forEach((ratio, idx) => {
+        if (ratio > bestRatio || (ratio === bestRatio && idx < bestIndex)) {
+          bestRatio = ratio;
+          bestIndex = idx;
+        }
+      });
+      onCurrentImageChange(bestIndex * imagesPerGroup);
     };
 
-    container.addEventListener("scroll", handleScroll, { passive: true });
-    // 初始检测一次
-    handleScroll();
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const idx = Number(
+            (entry.target as HTMLElement).dataset.imageGroup ?? "0",
+          );
+          visibilityMapRef.current.set(idx, entry.intersectionRatio);
+        }
+        // 防抖避免频繁回调
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(pickBest, 100);
+      },
+      {
+        root: container,
+        threshold: [0, 0.1, 0.25, 0.5, 0.75, 1],
+      },
+    );
+
+    groups.forEach((el) => observerRef.current?.observe(el));
+
+    // 立即执行一次初始检测
+    setTimeout(pickBest, 100);
 
     return () => {
-      clearTimeout(scrollTimeout);
-      container.removeEventListener("scroll", handleScroll);
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+        observerRef.current = null;
+      }
+      if (debounceTimer) clearTimeout(debounceTimer);
     };
   }, [
     viewMode,
     imageUrls.length,
     onCurrentImageChange,
-    imageWidth,
-    zoom,
     imagesPerGroup,
     scrollContainerRef,
   ]);

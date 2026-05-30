@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getPrimaryNavItems } from "../utils/navigationUtils";
 
@@ -140,7 +141,9 @@ export default function AppShell() {
 
       <div className="relative">
         <div className="pointer-events-none absolute inset-x-0 top-0 h-56 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.18),transparent_42%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.12),transparent_34%)]" />
-        <Outlet />
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
       </div>
     </div>
   );
