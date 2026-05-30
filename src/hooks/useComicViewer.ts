@@ -32,6 +32,7 @@ export const useComicViewer = () => {
   const [folderPath, setFolderPath] = useState<string>("");
   const [scrollPosition, setScrollPosition] = useState<number>(0);
   const [scrollHeight, setScrollHeight] = useState<number>(0);
+  const [scrollRatio, setScrollRatio] = useState<number>(0.94);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadingProgress, setLoadingProgress] = useState<number>(0);
   const isLoadingNextFolderRef = useRef(false);
@@ -61,12 +62,14 @@ export const useComicViewer = () => {
           const targetZoom = history.zoom || 1;
           const targetViewMode = history.viewMode || viewMode;
           const targetImageWidth = history.imageWidth || imageWidth;
+          const targetScrollRatio = history.scrollRatio ?? 0.94;
           const targetScrollPosition = history.scrollPosition || 0;
           const targetScrollHeight = history.scrollHeight || 0;
 
           setZoom(targetZoom);
           setViewMode(targetViewMode);
           setImageWidth(targetImageWidth);
+          setScrollRatio(targetScrollRatio);
           console.log(
             "[useComicViewer] 恢复滚动位置 - position:",
             targetScrollPosition,
@@ -187,10 +190,12 @@ export const useComicViewer = () => {
       const targetZoom = restoreData?.zoom || 1;
       const targetViewMode = restoreData?.viewMode || viewMode;
       const targetImageWidth = restoreData?.imageWidth || imageWidth;
+      const targetScrollRatio = restoreData?.scrollRatio ?? 0.94;
 
       setZoom(targetZoom);
       setViewMode(targetViewMode);
       setImageWidth(targetImageWidth);
+      setScrollRatio(targetScrollRatio);
 
       if (fileList.length > 0) {
         // 如果是从历史记录恢复，需要找到正确的索引
@@ -581,6 +586,7 @@ export const useComicViewer = () => {
         zoom,
         viewMode,
         imageWidth,
+        scrollRatio,
         scrollPosition: viewMode === "scroll" ? scrollPosition : undefined,
         scrollHeight: viewMode === "scroll" ? scrollHeight : undefined,
         imageUrls: viewMode === "scroll" ? imageUrls : undefined,
@@ -593,6 +599,7 @@ export const useComicViewer = () => {
     zoom,
     viewMode,
     imageWidth,
+    scrollRatio,
     imageUrls,
     scrollPosition,
     scrollHeight,
@@ -610,6 +617,7 @@ export const useComicViewer = () => {
     folderPath,
     scrollPosition,
     scrollHeight,
+    scrollRatio,
     isLoading,
     loadingProgress,
   };
@@ -626,6 +634,7 @@ export const useComicViewer = () => {
       handleWheel,
       toggleViewMode,
       setImageWidth: setImageWidthValue,
+      setScrollRatio: (ratio: number) => setScrollRatio(Math.max(0.1, Math.min(1.0, ratio))),
       goToPage: (index: number) => {
         if (index >= 0 && index < files.length) {
           setCurrentIndex(index);

@@ -27,6 +27,8 @@ interface ToolbarProps {
   onToggleViewMode: () => void;
   imageWidth: number;
   onImageWidthChange: (width: number) => void;
+  scrollRatio: number;
+  onScrollRatioChange: (ratio: number) => void;
   imagesPerGroup: number;
   onImagesPerGroupChange: (count: number) => void;
   onToggleFullscreen?: () => void;
@@ -75,6 +77,8 @@ export default function Toolbar({
   onToggleViewMode,
   imageWidth,
   onImageWidthChange,
+  scrollRatio,
+  onScrollRatioChange,
   imagesPerGroup,
   onImagesPerGroupChange,
   onToggleFullscreen,
@@ -450,6 +454,32 @@ export default function Toolbar({
                         <span className="text-xs text-gray-500">张</span>
                       </div>
                     </div>
+
+                    <div>
+                      <div className="mb-1 text-xs uppercase tracking-wide text-gray-500">
+                        滚动步长（W/S/↑/↓）
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min="15"
+                          max="100"
+                          step="5"
+                          value={Math.round(scrollRatio * 100)}
+                          onChange={(event) =>
+                            onScrollRatioChange(Number(event.target.value) / 100)
+                          }
+                          className="flex-1 h-2 rounded-lg appearance-none bg-[#111821] cursor-pointer accent-blue-500"
+                        />
+                        <span className="w-10 text-right text-xs text-gray-300 tabular-nums">
+                          {Math.round(scrollRatio * 100)}%
+                        </span>
+                      </div>
+                      <div className="mt-1 flex justify-between text-[10px] text-gray-600">
+                        <span>15%</span>
+                        <span>100%</span>
+                      </div>
+                    </div>
                   </div>
                 )}
               </section>
@@ -460,6 +490,8 @@ export default function Toolbar({
               <div className="grid grid-cols-2 gap-2 text-xs text-gray-300">
                 <div className="rounded-xl bg-[#111821] px-3 py-2">← / A 上一页</div>
                 <div className="rounded-xl bg-[#111821] px-3 py-2">→ / D 下一页</div>
+                <div className="rounded-xl bg-[#111821] px-3 py-2">W / ↑ 向上滚动</div>
+                <div className="rounded-xl bg-[#111821] px-3 py-2">S / ↓ 向下滚动</div>
                 <div className="rounded-xl bg-[#111821] px-3 py-2">空格 下一页</div>
                 <div className="rounded-xl bg-[#111821] px-3 py-2">ESC 退出全屏</div>
                 <div className="rounded-xl bg-[#111821] px-3 py-2">+ 放大</div>

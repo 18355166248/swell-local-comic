@@ -14,7 +14,7 @@ interface ImageViewerProps {
   imageWidth: number;
   imageUrls: string[];
   files: Array<{ name: string; path: string }>;
-  scrollRatio?: number; // 滚动距离比例，默认0.8（80%）
+  scrollRatio?: number; // 滚动距离比例，默认0.35（约30%视口）
   scrollPosition?: number; // 初始滚动位置
   onScrollPositionChange?: (position: number, height: number) => void; // 滚动位置变化回调，包含位置和总高度
   onLoadNextFolder?: () => void; // 加载下一文件夹（底部点击下键/S键/D键触发）
@@ -39,7 +39,7 @@ export default function ImageViewer({
   imageWidth,
   imageUrls,
   files,
-  scrollRatio = 0.75,
+  scrollRatio = 0.94,
   scrollPosition,
   onScrollPositionChange,
   onLoadNextFolder,

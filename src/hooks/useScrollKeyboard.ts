@@ -11,25 +11,17 @@ interface UseScrollKeyboardOptions {
 }
 
 const AT_BOTTOM_THRESHOLD = 5;
-const BASE_SCROLL_PIXELS_PER_SECOND = 900;
-const MIN_SCROLL_PIXELS_PER_SECOND = 480;
-/** 按住超过该时间后启动连续滚动；短按仅步进滚动（过短会把正常单击误判为长按） */
+/** 按住超过该时间后启动步进滚动；短按仅步进滚动（过短会把正常单击误判为长按） */
 const HOLD_SCROLL_DELAY_MS = 450;
+/** 长按步进滚动的间隔（ms） */
+const HOLD_STEP_INTERVAL_MS = 200;
 /** 单次按键/点击的滚动距离倍率（相对 scrollRatio） */
-const TAP_SCROLL_MULTIPLIER = 1.25;
+const TAP_SCROLL_MULTIPLIER = 0.85;
 
 function isAtBottom(container: HTMLElement): boolean {
   const { scrollTop, scrollHeight, clientHeight } = container;
   const distanceToBottom = scrollHeight - scrollTop - clientHeight;
   return distanceToBottom <= AT_BOTTOM_THRESHOLD;
-}
-
-function getContinuousScrollSpeed(containerHeight: number, scrollRatio: number) {
-  return Math.max(
-    MIN_SCROLL_PIXELS_PER_SECOND,
-    containerHeight * scrollRatio * 2,
-    BASE_SCROLL_PIXELS_PER_SECOND * scrollRatio,
-  );
 }
 
 export function useScrollKeyboard({
@@ -39,11 +31,10 @@ export function useScrollKeyboard({
   onLoadNextFolderAtBottom,
   isLoading = false,
 }: UseScrollKeyboardOptions) {
-  const animationFrameRef = useRef<number | null>(null);
   const holdDelayTimerRef = useRef<number | null>(null);
+  const stepIntervalRef = useRef<number | null>(null);
   const pressedKeyRef = useRef<string | null>(null);
   const scrollDirectionRef = useRef<1 | -1 | null>(null);
-  const lastFrameTimeRef = useRef<number | null>(null);
 
   const getTapScrollDistance = useCallback(
     (container: HTMLElement) =>
@@ -78,20 +69,24 @@ export function useScrollKeyboard({
     }
   }, []);
 
+  const clearStepInterval = useCallback(() => {
+    if (stepIntervalRef.current !== null) {
+      clearInterval(stepIntervalRef.current);
+      stepIntervalRef.current = null;
+    }
+  }, []);
+
   const stopScrolling = useCallback(() => {
     clearHoldDelay();
-    if (animationFrameRef.current !== null) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
-    }
+    clearStepInterval();
     pressedKeyRef.current = null;
     scrollDirectionRef.current = null;
-    lastFrameTimeRef.current = null;
-  }, [clearHoldDelay]);
+  }, [clearHoldDelay, clearStepInterval]);
 
-  const startContinuousScroll = useCallback(
+  /** 步进式滚动：每隔 HOLD_STEP_INTERVAL_MS 滚动一个步长，替代连续平滑滚动避免头晕 */
+  const startSteppedScroll = useCallback(
     (keyId: string, direction: 1 | -1) => {
-      if (scrollContainerRef.current === null) {
+      if (!scrollContainerRef.current) {
         return;
       }
 
@@ -99,7 +94,7 @@ export function useScrollKeyboard({
       pressedKeyRef.current = keyId;
       scrollDirectionRef.current = direction;
 
-      const tick = (timestamp: number) => {
+      const doStep = () => {
         const container = scrollContainerRef.current;
         const currentDirection = scrollDirectionRef.current;
 
@@ -120,26 +115,13 @@ export function useScrollKeyboard({
           }
         }
 
-        if (lastFrameTimeRef.current === null) {
-          lastFrameTimeRef.current = timestamp;
-        }
+        const distance = getTapScrollDistance(container);
+        container.scrollBy({
+          top: distance * currentDirection,
+          behavior: "smooth",
+        });
 
-        const deltaTime = Math.min(
-          timestamp - lastFrameTimeRef.current,
-          32,
-        );
-        lastFrameTimeRef.current = timestamp;
-
-        const speed = getContinuousScrollSpeed(
-          container.clientHeight,
-          scrollRatio,
-        );
-        const distance = (speed * deltaTime) / 1000;
-
-        if (distance > 0) {
-          container.scrollTop += distance * currentDirection;
-        }
-
+        // 滚动后再次检查是否到底
         if (
           currentDirection === 1 &&
           onLoadNextFolderAtBottom &&
@@ -148,32 +130,33 @@ export function useScrollKeyboard({
         ) {
           stopScrolling();
           onLoadNextFolderAtBottom();
-          return;
         }
-
-        animationFrameRef.current = requestAnimationFrame(tick);
       };
 
-      animationFrameRef.current = requestAnimationFrame(tick);
+      // 立即执行第一步，后续按间隔执行
+      doStep();
+      stepIntervalRef.current = window.setInterval(() => {
+        doStep();
+      }, HOLD_STEP_INTERVAL_MS);
     },
     [
+      getTapScrollDistance,
       isLoading,
       onLoadNextFolderAtBottom,
       scrollContainerRef,
-      scrollRatio,
       stopScrolling,
     ],
   );
 
-  const scheduleContinuousScroll = useCallback(
+  const scheduleSteppedScroll = useCallback(
     (keyId: string, direction: 1 | -1) => {
       clearHoldDelay();
       holdDelayTimerRef.current = window.setTimeout(() => {
         holdDelayTimerRef.current = null;
-        startContinuousScroll(keyId, direction);
+        startSteppedScroll(keyId, direction);
       }, HOLD_SCROLL_DELAY_MS);
     },
-    [clearHoldDelay, startContinuousScroll],
+    [clearHoldDelay, startSteppedScroll],
   );
 
   useEffect(() => {
@@ -201,17 +184,17 @@ export function useScrollKeyboard({
         e.preventDefault();
         const keyId = keyCode === "ArrowUp" ? "ArrowUp" : "w";
         if (e.repeat) {
-          if (animationFrameRef.current !== null && pressedKeyRef.current === keyId) {
+          if (stepIntervalRef.current !== null && pressedKeyRef.current === keyId) {
             return;
           }
-          scheduleContinuousScroll(keyId, -1);
+          scheduleSteppedScroll(keyId, -1);
           return;
         }
 
         stopScrolling();
         pressedKeyRef.current = keyId;
         handleScrollUp();
-        scheduleContinuousScroll(keyId, -1);
+        scheduleSteppedScroll(keyId, -1);
       }
       // s 键或下箭头键向下滚动（已在底部时加载下一文件夹）
       else if (key === "s" || keyCode === "ArrowDown") {
@@ -231,17 +214,17 @@ export function useScrollKeyboard({
         }
 
         if (e.repeat) {
-          if (animationFrameRef.current !== null && pressedKeyRef.current === keyId) {
+          if (stepIntervalRef.current !== null && pressedKeyRef.current === keyId) {
             return;
           }
-          scheduleContinuousScroll(keyId, 1);
+          scheduleSteppedScroll(keyId, 1);
           return;
         }
 
         stopScrolling();
         pressedKeyRef.current = keyId;
         handleScrollDown();
-        scheduleContinuousScroll(keyId, 1);
+        scheduleSteppedScroll(keyId, 1);
       }
     };
 
@@ -287,7 +270,7 @@ export function useScrollKeyboard({
     viewMode,
     handleScrollUp,
     handleScrollDown,
-    scheduleContinuousScroll,
+    scheduleSteppedScroll,
     stopScrolling,
     onLoadNextFolderAtBottom,
     isLoading,

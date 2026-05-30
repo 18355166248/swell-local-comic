@@ -17,6 +17,7 @@ export interface ComicViewerState {
   folderPath: string;
   scrollPosition?: number;
   scrollHeight?: number;
+  scrollRatio: number;
   isLoading?: boolean;
   loadingProgress?: number; // 加载进度 0-100
 }
@@ -35,6 +36,7 @@ export interface ReadingHistory {
   imageWidth?: number;
   scrollPosition?: number;
   scrollHeight?: number; // 滚动内容的总高度
+  scrollRatio?: number;
   imageUrls?: string[];
 }
 
@@ -51,6 +53,7 @@ export interface ReadingHistoryInput {
   imageWidth?: number;
   scrollPosition?: number;
   scrollHeight?: number;
+  scrollRatio?: number;
   imageUrls?: string[];
 }
 

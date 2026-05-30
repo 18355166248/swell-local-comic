@@ -208,6 +208,8 @@ export default function ComicViewer() {
             onToggleViewMode={actions.toggleViewMode}
             imageWidth={state.imageWidth}
             onImageWidthChange={actions.setImageWidth}
+            scrollRatio={state.scrollRatio}
+            onScrollRatioChange={actions.setScrollRatio}
             imagesPerGroup={imagesPerGroup}
             onImagesPerGroupChange={setImagesPerGroup}
             onToggleFullscreen={toggleFullscreen}
@@ -243,6 +245,7 @@ export default function ComicViewer() {
               onWheel={actions.handleWheel}
               viewMode={state.viewMode}
               imageWidth={state.imageWidth}
+              scrollRatio={state.scrollRatio}
               imageUrls={state.imageUrls}
               files={state.files}
               scrollPosition={
