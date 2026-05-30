@@ -62,11 +62,6 @@ export interface FolderInfo {
   path: string;
 }
 
-export interface ImageFileInfo {
-  name: string;
-  path: string;
-}
-
 export interface LibraryItem {
   id: string;
   name: string;
@@ -88,6 +83,11 @@ export interface ComicChapter {
   path: string;
   relativePath: string;
   imageCount: number;
+}
+
+export interface ChapterSequenceItem {
+  name: string;
+  path: string;
 }
 
 export interface ComicLibraryScanResult {

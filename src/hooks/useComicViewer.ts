@@ -1,11 +1,13 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type {
+  ChapterSequenceItem,
   ComicFile,
   ComicViewerState,
   ViewMode,
   ReadingHistory,
 } from "../types";
 import {
+  DEFAULT_SCROLL_RATIO,
   selectFolder,
   scanImageFiles,
   loadImageFile,
@@ -16,12 +18,6 @@ import {
 } from "../utils/fileUtils";
 import { saveHistory } from "../utils/historyUtils";
 import { normalizeLibraryPathId } from "../utils/libraryUtils";
-import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
-
-interface ChapterSequenceItem {
-  name: string;
-  path: string;
-}
 
 export const useComicViewer = () => {
   const [files, setFiles] = useState<ComicFile[]>([]);
@@ -35,13 +31,18 @@ export const useComicViewer = () => {
   const [folderPath, setFolderPath] = useState<string>("");
   const [scrollPosition, setScrollPosition] = useState<number>(0);
   const [scrollHeight, setScrollHeight] = useState<number>(0);
-  const [scrollRatio, setScrollRatio] = useState<number>(0.94);
+  const [scrollRatio, setScrollRatio] = useState<number>(DEFAULT_SCROLL_RATIO);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadingProgress, setLoadingProgress] = useState<number>(0);
   const isLoadingNextFolderRef = useRef(false);
   const hasNoMoreFoldersRef = useRef(false);
+  const isLoadingRef = useRef(false);
   const currentImageUrlsRef = useRef<string[]>([]);
   const currentImageUrlRef = useRef<string>("");
+  const preloadCacheRef = useRef<Map<string, string>>(new Map());
+
+  // 同步 ref，避免 loadNextFolder 依赖 isLoading state 导致级联重建
+  isLoadingRef.current = isLoading;
 
   const handleFolderSelect = useCallback(async () => {
     try {
@@ -52,6 +53,7 @@ export const useComicViewer = () => {
         URL.revokeObjectURL(currentImageUrlRef.current);
         currentImageUrlRef.current = "";
       }
+      preloadCacheRef.current.clear();
 
       // 检查是否有直接恢复的历史记录
       const directRestore = sessionStorage.getItem("directRestore");
@@ -75,7 +77,7 @@ export const useComicViewer = () => {
           const targetZoom = history.zoom || 1;
           const targetViewMode = history.viewMode || viewMode;
           const targetImageWidth = history.imageWidth || imageWidth;
-          const targetScrollRatio = history.scrollRatio ?? 0.94;
+          const targetScrollRatio = history.scrollRatio ?? DEFAULT_SCROLL_RATIO;
           const targetScrollPosition = history.scrollPosition || 0;
           const targetScrollHeight = history.scrollHeight || 0;
 
@@ -181,7 +183,7 @@ export const useComicViewer = () => {
       const targetZoom = restoreData?.zoom || 1;
       const targetViewMode = restoreData?.viewMode || viewMode;
       const targetImageWidth = restoreData?.imageWidth || imageWidth;
-      const targetScrollRatio = restoreData?.scrollRatio ?? 0.94;
+      const targetScrollRatio = restoreData?.scrollRatio ?? DEFAULT_SCROLL_RATIO;
 
       setZoom(targetZoom);
       setViewMode(targetViewMode);
@@ -228,10 +230,21 @@ export const useComicViewer = () => {
 
   const loadImage = useCallback(async (file: ComicFile) => {
     try {
+      const cached = preloadCacheRef.current.get(file.path);
+      if (cached) {
+        if (currentImageUrlRef.current && currentImageUrlRef.current !== cached) {
+          URL.revokeObjectURL(currentImageUrlRef.current);
+        }
+        currentImageUrlRef.current = cached;
+        setImageUrl(cached);
+        return;
+      }
+
       if (currentImageUrlRef.current) {
         URL.revokeObjectURL(currentImageUrlRef.current);
       }
       const url = await loadImageFile(file);
+      preloadCacheRef.current.set(file.path, url);
       currentImageUrlRef.current = url;
       setImageUrl(url);
     } catch (error) {
@@ -246,7 +259,7 @@ export const useComicViewer = () => {
       const isPageMode = viewMode === "page";
       if (
         (!isScrollMode && !isPageMode) ||
-        (!fromEmptyFolder && isLoading) ||
+        (!fromEmptyFolder && isLoadingRef.current) ||
         isLoadingNextFolderRef.current ||
         hasNoMoreFoldersRef.current
       ) {
@@ -344,7 +357,26 @@ export const useComicViewer = () => {
         isLoadingNextFolderRef.current = false;
       }
     },
-    [viewMode, isLoading]
+    [viewMode]
+  );
+
+  /** 后台预加载相邻图片（距离当前页 ±2），翻页瞬间无闪烁 */
+  const preloadAdjacent = useCallback(
+    (baseIndex: number) => {
+      if (viewMode !== "page" || files.length === 0) return;
+      const start = Math.max(0, baseIndex - 2);
+      const end = Math.min(files.length, baseIndex + 3);
+      for (let i = start; i < end; i++) {
+        if (i === baseIndex) continue;
+        const file = files[i];
+        if (!preloadCacheRef.current.has(file.path)) {
+          loadImageFile(file).then((url) => {
+            preloadCacheRef.current.set(file.path, url);
+          }).catch(() => { /* 静默失败，翻页时重新加载 */ });
+        }
+      }
+    },
+    [files, viewMode],
   );
 
   const nextPage = useCallback(async () => {
@@ -352,19 +384,20 @@ export const useComicViewer = () => {
       const newIndex = currentIndex + 1;
       setCurrentIndex(newIndex);
       await loadImage(files[newIndex]);
+      preloadAdjacent(newIndex);
     } else if (viewMode === "page" && currentIndex === files.length - 1 && files.length > 0) {
-      // 分页模式下翻到最后一页再翻页时，加载下一文件夹
       await loadNextFolder();
     }
-  }, [currentIndex, files, loadImage, viewMode, loadNextFolder]);
+  }, [currentIndex, files, loadImage, viewMode, loadNextFolder, preloadAdjacent]);
 
   const prevPage = useCallback(async () => {
     if (currentIndex > 0) {
       const newIndex = currentIndex - 1;
       setCurrentIndex(newIndex);
       await loadImage(files[newIndex]);
+      preloadAdjacent(newIndex);
     }
-  }, [currentIndex, files, loadImage]);
+  }, [currentIndex, files, loadImage, preloadAdjacent]);
 
   const zoomIn = useCallback(() => {
     setZoom((prev) => Math.min(prev * 1.2, 3));
@@ -377,17 +410,6 @@ export const useComicViewer = () => {
   const resetZoom = useCallback(() => {
     setZoom(1);
   }, []);
-
-  // 键盘快捷键（←/A/D/空格/+/-/0，滚动模式的 W/S/↑/↓ 由 useScrollKeyboard 处理）
-  useKeyboardShortcuts({
-    viewMode,
-    onNextPage: nextPage,
-    onPrevPage: prevPage,
-    onLoadNextFolder: loadNextFolder,
-    onZoomIn: zoomIn,
-    onZoomOut: zoomOut,
-    onResetZoom: resetZoom,
-  });
 
   // 切换视图模式
   const toggleViewMode = useCallback(async () => {
@@ -472,7 +494,64 @@ export const useComicViewer = () => {
     scrollHeight,
   ]);
 
-  const state: ComicViewerState = {
+  const setScrollRatioWrapped = useCallback(
+    (ratio: number) => setScrollRatio(Math.max(0.1, Math.min(1.0, ratio))),
+    [],
+  );
+
+  const goToPage = useCallback(
+    (index: number) => {
+      if (index >= 0 && index < files.length) {
+        setCurrentIndex(index);
+        loadImage(files[index]);
+      }
+    },
+    [files, loadImage],
+  );
+
+  const onScrollPositionChange = useCallback(
+    (position: number, height: number) => {
+      setScrollPosition(position);
+      setScrollHeight(height);
+    },
+    [],
+  );
+
+  const onCurrentImageChange = useCallback(
+    (index: number) => {
+      if (viewMode === "scroll") {
+        setCurrentIndex(index);
+      }
+    },
+    [viewMode],
+  );
+
+  const loadNextFolderAction = useCallback(() => {
+    loadNextFolder();
+  }, [loadNextFolder]);
+
+  const actions = useMemo(() => ({
+    handleFolderSelect,
+    nextPage,
+    prevPage,
+    zoomIn,
+    zoomOut,
+    resetZoom,
+    handleWheel,
+    toggleViewMode,
+    setImageWidth: setImageWidthValue,
+    setScrollRatio: setScrollRatioWrapped,
+    goToPage,
+    onScrollPositionChange,
+    onCurrentImageChange,
+    loadNextFolder: loadNextFolderAction,
+  }), [
+    handleFolderSelect, nextPage, prevPage, zoomIn, zoomOut, resetZoom,
+    handleWheel, toggleViewMode, setImageWidthValue, setScrollRatioWrapped,
+    goToPage, onScrollPositionChange, onCurrentImageChange, loadNextFolderAction,
+  ]);
+
+  const state = useMemo<ComicViewerState>(() => ({
     files,
     currentIndex,
     zoom,
@@ -487,41 +566,11 @@ export const useComicViewer = () => {
     scrollRatio,
     isLoading,
     loadingProgress,
-  };
+  }), [
+    files, currentIndex, zoom, imageUrl, viewMode, imageWidth, imageUrls,
+    folderName, folderPath, scrollPosition, scrollHeight, scrollRatio,
+    isLoading, loadingProgress,
+  ]);
 
-  return {
-    state,
-    actions: {
-      handleFolderSelect,
-      nextPage,
-      prevPage,
-      zoomIn,
-      zoomOut,
-      resetZoom,
-      handleWheel,
-      toggleViewMode,
-      setImageWidth: setImageWidthValue,
-      setScrollRatio: (ratio: number) => setScrollRatio(Math.max(0.1, Math.min(1.0, ratio))),
-      goToPage: (index: number) => {
-        if (index >= 0 && index < files.length) {
-          setCurrentIndex(index);
-          loadImage(files[index]);
-        }
-      },
-      onScrollPositionChange: (position: number, height: number) => {
-        // 简化：直接更新位置和高度，不做复杂判断
-        setScrollPosition(position);
-        setScrollHeight(height);
-      },
-      onCurrentImageChange: (index: number) => {
-        // 滚动模式下更新当前图片索引
-        if (viewMode === "scroll") {
-          setCurrentIndex(index);
-        }
-      },
-      loadNextFolder: () => {
-        loadNextFolder();
-      },
-    },
-  };
+  return { state, actions };
 };

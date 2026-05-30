@@ -3,22 +3,20 @@ import type { ViewMode } from "../types";
 
 interface UseKeyboardShortcutsOptions {
   viewMode: ViewMode;
-  /** 下一页（page 模式或空格键） */
   onNextPage: () => void;
-  /** 上一页 */
   onPrevPage: () => void;
-  /** 加载下一文件夹（scroll 模式 D 键） */
   onLoadNextFolder: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onResetZoom: () => void;
+  onToggleFullscreen: () => void;
+  onToggleViewMode: () => void;
+  onGoToFirst: () => void;
+  onGoToLast: () => void;
 }
 
 /**
- * 全局键盘快捷键（不含 W/S/↑/↓ 滚动 — 这些由 useScrollKeyboard 处理）。
- * - page 模式：←/A 上一页，→/D/空格 下一页
- * - scroll 模式：D 加载下一文件夹
- * - 通用：+/-/0 缩放
+ * 全局键盘快捷键（W/S/↑/↓ 滚动由 useScrollKeyboard 处理）。
  */
 export function useKeyboardShortcuts({
   viewMode,
@@ -28,6 +26,10 @@ export function useKeyboardShortcuts({
   onZoomIn,
   onZoomOut,
   onResetZoom,
+  onToggleFullscreen,
+  onToggleViewMode,
+  onGoToFirst,
+  onGoToLast,
 }: UseKeyboardShortcutsOptions) {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -67,6 +69,32 @@ export function useKeyboardShortcuts({
             onLoadNextFolder();
           }
           break;
+        case "f":
+        case "F":
+          e.preventDefault();
+          onToggleFullscreen();
+          break;
+        case "m":
+        case "M":
+          e.preventDefault();
+          onToggleViewMode();
+          break;
+        case "Home":
+          e.preventDefault();
+          onGoToFirst();
+          break;
+        case "End":
+          e.preventDefault();
+          onGoToLast();
+          break;
+        case "PageUp":
+          e.preventDefault();
+          onPrevPage();
+          break;
+        case "PageDown":
+          e.preventDefault();
+          onNextPage();
+          break;
         case "+":
         case "=":
           e.preventDefault();
@@ -82,7 +110,7 @@ export function useKeyboardShortcuts({
           break;
       }
     },
-    [viewMode, onNextPage, onPrevPage, onLoadNextFolder, onZoomIn, onZoomOut, onResetZoom],
+    [viewMode, onNextPage, onPrevPage, onLoadNextFolder, onZoomIn, onZoomOut, onResetZoom, onToggleFullscreen, onToggleViewMode, onGoToFirst, onGoToLast],
   );
 
   useEffect(() => {

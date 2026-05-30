@@ -34,7 +34,9 @@ function WindowControlButton({
     <button
       title={title}
       onClick={() => {
-        void onClick();
+        void onClick().catch((err) =>
+          console.error(`[WindowControlButton] ${title} 失败:`, err),
+        );
       }}
       className={`flex h-8 w-10 items-center justify-center rounded-md text-sm transition-colors ${
         tone === "danger"

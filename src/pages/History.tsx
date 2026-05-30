@@ -210,6 +210,7 @@ export default function History() {
             </div>
           </section>
 
+          {rest.length > 0 && (
           <section>
             <div className="mb-4">
               <h2 className="text-lg font-semibold text-gray-100">历史列表</h2>
@@ -227,7 +228,7 @@ export default function History() {
               </div>
 
               <div className="divide-y divide-white/6">
-                {(rest.length > 0 ? rest : featured).map((history) => {
+                {rest.map((history) => {
                   const progress = getProgress(history);
                   return (
                     <div
@@ -290,6 +291,7 @@ export default function History() {
               </div>
             </div>
           </section>
+          )}
         </div>
       )}
     </main>

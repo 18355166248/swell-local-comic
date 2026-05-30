@@ -177,9 +177,7 @@ async fn read_image_files(folder_path: String) -> Result<Vec<ImageFileInfo>, Str
     }
   }
 
-  // 按文件名排序
-  image_files.sort_by(|a, b| a.name.cmp(&b.name));
-
+  // 排序由前端 naturalSort 统一处理，Rust 端不再重复排序
   Ok(image_files)
 }
 

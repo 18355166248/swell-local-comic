@@ -492,10 +492,12 @@ export default function Toolbar({
                 <div className="rounded-xl bg-[#111821] px-3 py-2">→ / D 下一页</div>
                 <div className="rounded-xl bg-[#111821] px-3 py-2">W / ↑ 向上滚动</div>
                 <div className="rounded-xl bg-[#111821] px-3 py-2">S / ↓ 向下滚动</div>
+                <div className="rounded-xl bg-[#111821] px-3 py-2">F 全屏</div>
+                <div className="rounded-xl bg-[#111821] px-3 py-2">M 切换模式</div>
+                <div className="rounded-xl bg-[#111821] px-3 py-2">Home / End 首尾</div>
+                <div className="rounded-xl bg-[#111821] px-3 py-2">PageUp/Dn 翻页</div>
+                <div className="rounded-xl bg-[#111821] px-3 py-2">+ / - 缩放</div>
                 <div className="rounded-xl bg-[#111821] px-3 py-2">空格 下一页</div>
-                <div className="rounded-xl bg-[#111821] px-3 py-2">ESC 退出全屏</div>
-                <div className="rounded-xl bg-[#111821] px-3 py-2">+ 放大</div>
-                <div className="rounded-xl bg-[#111821] px-3 py-2">- 缩小</div>
               </div>
             </section>
           </>

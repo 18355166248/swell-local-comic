@@ -185,7 +185,11 @@ export default function LibraryHome() {
                   <div className="rounded-xl bg-black/20 p-3">
                     <div className="text-xs text-gray-400">可读章节</div>
                     <div className="mt-1 text-xl font-semibold">
-                      {chapterCounts[item.id] ?? "..."}
+                      {chapterCounts[item.id] !== undefined ? (
+                        chapterCounts[item.id]
+                      ) : (
+                        <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-gray-500 border-t-blue-400" />
+                      )}
                     </div>
                   </div>
                   <div className="rounded-xl bg-black/20 p-3">

@@ -1,6 +1,9 @@
-import { useRef, useCallback, useState } from "react";
+import { useRef, useCallback } from "react";
+import { DEFAULT_SCROLL_RATIO } from "../utils/fileUtils";
 import type { ViewMode } from "../types";
 import { useImageGroups } from "../hooks/useImageGroups";
+import { ChevronDownIcon, ChevronUpIcon, FullscreenIcon, NextChapterIcon } from "./Icons";
+import { FullscreenOverlay } from "./FullscreenOverlay";
 import { useScrollKeyboard } from "../hooks/useScrollKeyboard";
 import { useScrollPosition } from "../hooks/useScrollPosition";
 import { useCurrentImageDetection } from "../hooks/useCurrentImageDetection";
@@ -39,7 +42,7 @@ export default function ImageViewer({
   imageWidth,
   imageUrls,
   files,
-  scrollRatio = 0.94,
+  scrollRatio = DEFAULT_SCROLL_RATIO,
   scrollPosition,
   onScrollPositionChange,
   onLoadNextFolder,
@@ -55,7 +58,6 @@ export default function ImageViewer({
   onFullscreenImageFitChange,
 }: ImageViewerProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [showExitFullscreen, setShowExitFullscreen] = useState(false);
   /** 判定「已到底部」的阈值：距离底部小于等于此像素视为到底 */
   const AT_BOTTOM_THRESHOLD = 5;
 
@@ -89,8 +91,6 @@ export default function ImageViewer({
     imageUrls,
     imagesPerGroup,
     onCurrentImageChange,
-    imageWidth,
-    zoom,
     scrollContainerRef,
   });
 
@@ -138,9 +138,7 @@ export default function ImageViewer({
             title="全屏看图"
             aria-label="全屏"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-            </svg>
+            <FullscreenIcon className="h-6 w-6" />
           </button>
         )}
         <div
@@ -194,40 +192,14 @@ export default function ImageViewer({
             className="scroll-btn bg-white/80 hover:bg-white border border-gray-300 rounded-full w-12 h-12 flex items-center justify-center shadow-lg transition-all hover:shadow-xl active:scale-95"
             aria-label="向上滚动"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-6 w-6 text-gray-700"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 15l7-7 7 7"
-              />
-            </svg>
+            <ChevronUpIcon size={24} className="text-gray-700" />
           </button>
           <button
             onClick={handleScrollDownClick}
             className="scroll-btn bg-white/80 hover:bg-white border border-gray-300 rounded-full w-12 h-12 flex items-center justify-center shadow-lg transition-all hover:shadow-xl active:scale-95"
             aria-label="向下滚动"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-6 w-6 text-gray-700"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 9l-7 7-7-7"
-              />
-            </svg>
+            <ChevronDownIcon size={24} className="text-gray-700" />
           </button>
           {onLoadNextFolder && (
             <button
@@ -237,85 +209,23 @@ export default function ImageViewer({
               aria-label="下一文件夹 (D)"
               title="下一文件夹 (D)"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-6 w-6 text-gray-700"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 12h10"
-                />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M11 7l5 5-5 5"
-                />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 6v12"
-                />
-              </svg>
+              <NextChapterIcon size={24} className="text-gray-700" />
             </button>
           )}
         </div>
         )}
         {/* 全屏模式：左上角进度、适应屏幕按钮，失去焦点时隐藏退出按钮 */}
         {isFullscreen && onToggleFullscreen && totalFiles > 0 && (
-          <div
-            className="absolute top-4 left-4 flex flex-col gap-2 z-20"
-            onMouseEnter={() => setShowExitFullscreen(true)}
-            onMouseLeave={() => setShowExitFullscreen(false)}
-          >
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="bg-black/60 px-4 py-2 rounded-lg text-white text-sm">
-                {scrollPositionRatio !== undefined
-                  ? `${currentIndex + 1} / ${totalFiles} · ${Math.round(scrollPositionRatio * 100)}%`
-                  : `${currentIndex + 1} / ${totalFiles}`}
-              </div>
-              {onFullscreenImageFitChange && (
-                <button
-                  onClick={() =>
-                    onFullscreenImageFitChange(
-                      fullscreenImageFit === "original" ? "fit" : "original"
-                    )
-                  }
-                  className={`px-3 py-2 rounded-lg text-sm transition-colors ${
-                    fullscreenImageFit === "fit"
-                      ? "bg-blue-600 text-white"
-                      : "bg-black/60 text-white hover:bg-black/80"
-                  }`}
-                  title={
-                    fullscreenImageFit === "original"
-                      ? "当前：原图大小，点击适应屏幕"
-                      : "当前：适应屏幕，点击原图大小"
-                  }
-                >
-                  {fullscreenImageFit === "original" ? "适应屏幕" : "原图"}
-                </button>
-              )}
-            </div>
-            {showExitFullscreen && (
-              <button
-                onClick={onToggleFullscreen}
-                onBlur={() => setShowExitFullscreen(false)}
-                className="bg-black/60 hover:bg-black/80 px-4 py-2 rounded-lg text-white text-sm flex items-center gap-2 transition-colors"
-                title="退出全屏 (ESC)"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-                退出全屏
-              </button>
-            )}
-          </div>
+          <FullscreenOverlay
+            progressText={
+              scrollPositionRatio !== undefined
+                ? `${currentIndex + 1} / ${totalFiles} · ${Math.round(scrollPositionRatio * 100)}%`
+                : `${currentIndex + 1} / ${totalFiles}`
+            }
+            fullscreenImageFit={fullscreenImageFit}
+            onFullscreenImageFitChange={onFullscreenImageFitChange}
+            onToggleFullscreen={onToggleFullscreen}
+          />
         )}
       </div>
     );
@@ -362,51 +272,12 @@ export default function ImageViewer({
       )}
       {/* 全屏模式：左上角进度、适应屏幕按钮，失去焦点时隐藏退出按钮 */}
       {isFullscreen && onToggleFullscreen && totalFiles > 0 && (
-        <div
-          className="absolute top-4 left-4 flex flex-col gap-2 z-20"
-          onMouseEnter={() => setShowExitFullscreen(true)}
-          onMouseLeave={() => setShowExitFullscreen(false)}
-        >
-          <div className="flex items-center gap-2">
-            <div className="bg-black/60 px-4 py-2 rounded-lg text-white text-sm">
-              {currentIndex + 1} / {totalFiles}
-            </div>
-            {onFullscreenImageFitChange && (
-              <button
-                onClick={() =>
-                  onFullscreenImageFitChange(
-                    fullscreenImageFit === "original" ? "fit" : "original"
-                  )
-                }
-                className={`px-3 py-2 rounded-lg text-sm transition-colors ${
-                  fullscreenImageFit === "fit"
-                    ? "bg-blue-600 text-white"
-                    : "bg-black/60 text-white hover:bg-black/80"
-                }`}
-                title={
-                  fullscreenImageFit === "original"
-                    ? "当前：原图大小，点击适应屏幕"
-                    : "当前：适应屏幕，点击原图大小"
-                }
-              >
-                {fullscreenImageFit === "original" ? "适应屏幕" : "原图"}
-              </button>
-            )}
-          </div>
-          {showExitFullscreen && (
-            <button
-              onClick={onToggleFullscreen}
-              onBlur={() => setShowExitFullscreen(false)}
-              className="bg-black/60 hover:bg-black/80 px-4 py-2 rounded-lg text-white text-sm flex items-center gap-2 transition-colors"
-              title="退出全屏 (ESC)"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-              退出全屏
-            </button>
-          )}
-        </div>
+        <FullscreenOverlay
+          progressText={`${currentIndex + 1} / ${totalFiles}`}
+          fullscreenImageFit={fullscreenImageFit}
+          onFullscreenImageFitChange={onFullscreenImageFitChange}
+          onToggleFullscreen={onToggleFullscreen}
+        />
       )}
     </div>
   );

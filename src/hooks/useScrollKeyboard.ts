@@ -10,13 +10,9 @@ interface UseScrollKeyboardOptions {
 }
 
 const AT_BOTTOM_THRESHOLD = 5;
-/** 按住超过该时间后启动连续步进 */
 const HOLD_DELAY_MS = 450;
-/** 长按步进间隔 */
 const HOLD_INTERVAL_MS = 150;
-/** 单击滚动倍率 */
 const TAP_MULTIPLIER = 0.85;
-/** 长按步长倍率（比单击更小，避免跳跃过大） */
 const HOLD_MULTIPLIER = 0.35;
 
 function isAtBottom(container: HTMLElement): boolean {
@@ -33,92 +29,19 @@ export function useScrollKeyboard({
   const holdTimerRef = useRef<number | null>(null);
   const intervalRef = useRef<number | null>(null);
   const dirRef = useRef<1 | -1 | null>(null);
+  const isLoadingRef = useRef(isLoading);
+  const onLoadNextRef = useRef(onLoadNextFolderAtBottom);
+  // ref mirror of scrollRatio so effect doesn't rebuild on slider drag
+  const scrollRatioRef = useRef(scrollRatio);
 
-  const getTapDist = useCallback(
-    (container: HTMLElement) => container.clientHeight * scrollRatio * TAP_MULTIPLIER,
-    [scrollRatio],
-  );
+  isLoadingRef.current = isLoading;
+  onLoadNextRef.current = onLoadNextFolderAtBottom;
+  scrollRatioRef.current = scrollRatio;
 
-  const getHoldDist = useCallback(
-    (container: HTMLElement) => container.clientHeight * scrollRatio * HOLD_MULTIPLIER,
-    [scrollRatio],
-  );
-
-  /** 执行一次即时滚动（无 smooth，避免和后续步进冲突） */
-  const doInstantScroll = useCallback(
-    (dist: number, dir: 1 | -1) => {
-      const c = scrollContainerRef.current;
-      if (!c || dir !== dirRef.current) return;
-
-      if (dir === 1 && onLoadNextFolderAtBottom && !isLoading && isAtBottom(c)) {
-        stopAll();
-        onLoadNextFolderAtBottom();
-        return;
-      }
-
-      c.scrollBy({ top: dist * dir, behavior: "instant" as ScrollBehavior });
-
-      if (dir === 1 && onLoadNextFolderAtBottom && !isLoading && isAtBottom(c)) {
-        stopAll();
-        onLoadNextFolderAtBottom();
-      }
-    },
-    [scrollContainerRef, onLoadNextFolderAtBottom, isLoading],
-  );
-
-  const clearAll = useCallback(() => {
-    if (holdTimerRef.current !== null) {
-      clearTimeout(holdTimerRef.current);
-      holdTimerRef.current = null;
-    }
-    if (intervalRef.current !== null) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-  }, []);
-
-  const stopAll = useCallback(() => {
-    clearAll();
-    dirRef.current = null;
-  }, [clearAll]);
-
-  /** 启动长按连续步进 */
-  const startStepping = useCallback(
-    (dir: 1 | -1) => {
-      clearAll();
-      dirRef.current = dir;
-
-      const tick = () => {
-        const c = scrollContainerRef.current;
-        const d = dirRef.current;
-        if (!c || d === null || d !== dir) {
-          stopAll();
-          return;
-        }
-        doInstantScroll(getHoldDist(c), d);
-      };
-
-      intervalRef.current = window.setInterval(tick, HOLD_INTERVAL_MS);
-    },
-    [clearAll, doInstantScroll, getHoldDist, scrollContainerRef, stopAll],
-  );
-
-  const scheduleHold = useCallback(
-    (dir: 1 | -1) => {
-      clearAll();
-      dirRef.current = dir;
-      holdTimerRef.current = window.setTimeout(() => {
-        holdTimerRef.current = null;
-        startStepping(dir);
-      }, HOLD_DELAY_MS);
-    },
-    [clearAll, startStepping],
-  );
-
-  // ---- 键盘事件 ----
+  // 不依赖 scrollRatio/isLoading/onLoadNext，避免 effect 频繁销毁重建
   useEffect(() => {
     if (viewMode !== "scroll") {
-      stopAll();
+      clearAll();
       return;
     }
 
@@ -130,91 +53,109 @@ export function useScrollKeyboard({
 
       const key = e.key.toLowerCase();
       const code = e.key;
-
       const isUp = key === "w" || code === "ArrowUp";
       const isDown = key === "s" || code === "ArrowDown";
       if (!isUp && !isDown) return;
 
       e.preventDefault();
       const dir: 1 | -1 = isUp ? -1 : 1;
+      const c = scrollContainerRef.current;
+      if (!c) return;
+
+      const ratio = scrollRatioRef.current;
 
       // 已到底部 → 加载下一文件夹
-      if (dir === 1) {
-        const c = scrollContainerRef.current;
-        if (c && onLoadNextFolderAtBottom && !isLoading && isAtBottom(c)) {
-          stopAll();
-          onLoadNextFolderAtBottom();
-          return;
-        }
-      }
-
-      if (e.repeat) {
-        // repeat 事件：如果已经在步进则不重复启动
-        if (intervalRef.current !== null) return;
-        // 已经按了别的键且不是当前方向
-        if (dirRef.current !== null && dirRef.current !== dir) stopAll();
-        startStepping(dir);
+      if (dir === 1 && onLoadNextRef.current && !isLoadingRef.current && isAtBottom(c)) {
+        clearAll();
+        onLoadNextRef.current();
         return;
       }
 
-      // 首次按下：先执行一次即时滚动，然后启动长按计时
-      stopAll();
-      dirRef.current = dir;
-      const c = scrollContainerRef.current;
-      if (c) {
-        doInstantScroll(getTapDist(c), dir);
+      const tapDist = c.clientHeight * ratio * TAP_MULTIPLIER;
+      const holdDist = c.clientHeight * ratio * HOLD_MULTIPLIER;
+
+      if (e.repeat) {
+        if (intervalRef.current !== null) return;
+        if (dirRef.current !== null && dirRef.current !== dir) clearAll();
+        startStepping(dir, holdDist);
+        return;
       }
-      scheduleHold(dir);
+
+      // 首次按下：即时滚动一步 + 启动长按计时
+      clearAll();
+      dirRef.current = dir;
+      c.scrollBy({ top: tapDist * dir, behavior: "instant" as ScrollBehavior });
+      scheduleHold(dir, holdDist);
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase();
-      const code = e.key;
-      if (
-        key === "w" || key === "s" || code === "ArrowUp" || code === "ArrowDown"
-      ) {
-        stopAll();
-      }
+      const k = e.key.toLowerCase();
+      const c = e.key;
+      if (k === "w" || k === "s" || c === "ArrowUp" || c === "ArrowDown") clearAll();
     };
+
+    // -- 内联辅助函数（闭包捕获 ratio，每次 keydown 实时读取） --
+    function clearAll() {
+      if (holdTimerRef.current !== null) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
+      if (intervalRef.current !== null) { clearInterval(intervalRef.current); intervalRef.current = null; }
+      dirRef.current = null;
+    }
+
+    function scheduleHold(dir: 1 | -1, holdDist: number) {
+      clearAll();
+      dirRef.current = dir;
+      holdTimerRef.current = window.setTimeout(() => {
+        holdTimerRef.current = null;
+        startStepping(dir, holdDist);
+      }, HOLD_DELAY_MS);
+    }
+
+    function startStepping(dir: 1 | -1, holdDist: number) {
+      clearAll();
+      dirRef.current = dir;
+      const tick = () => {
+        const c2 = scrollContainerRef.current;
+        if (!c2 || dirRef.current !== dir) { clearAll(); return; }
+        if (dir === 1 && onLoadNextRef.current && !isLoadingRef.current && isAtBottom(c2)) {
+          clearAll();
+          onLoadNextRef.current();
+          return;
+        }
+        c2.scrollBy({ top: holdDist * dir, behavior: "instant" as ScrollBehavior });
+        if (dir === 1 && onLoadNextRef.current && !isLoadingRef.current && isAtBottom(c2)) {
+          clearAll();
+          onLoadNextRef.current();
+        }
+      };
+      intervalRef.current = window.setInterval(tick, HOLD_INTERVAL_MS);
+    }
 
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
-    window.addEventListener("blur", stopAll);
-    document.addEventListener("visibilitychange", () => {
-      if (document.hidden) stopAll();
-    });
+    window.addEventListener("blur", clearAll);
+    document.addEventListener("visibilitychange", () => { if (document.hidden) clearAll(); });
 
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
-      window.removeEventListener("blur", stopAll);
-      document.removeEventListener("visibilitychange", stopAll as EventListener);
-      stopAll();
+      window.removeEventListener("blur", clearAll);
+      document.removeEventListener("visibilitychange", clearAll as EventListener);
+      clearAll();
     };
-  }, [
-    viewMode,
-    doInstantScroll,
-    getTapDist,
-    scheduleHold,
-    startStepping,
-    stopAll,
-    onLoadNextFolderAtBottom,
-    isLoading,
-    scrollContainerRef,
-  ]);
+  }, [viewMode, scrollContainerRef]);
 
   // ---- 屏幕按钮用的 smooth 滚动（保留给 ImageViewer 的按钮点击） ----
   const handleScrollUp = useCallback(() => {
     const c = scrollContainerRef.current;
     if (!c) return;
-    c.scrollBy({ top: -getTapDist(c), behavior: "smooth" });
-  }, [getTapDist, scrollContainerRef]);
+    c.scrollBy({ top: -(c.clientHeight * scrollRatio * TAP_MULTIPLIER), behavior: "smooth" });
+  }, [scrollRatio, scrollContainerRef]);
 
   const handleScrollDown = useCallback(() => {
     const c = scrollContainerRef.current;
     if (!c) return;
-    c.scrollBy({ top: getTapDist(c), behavior: "smooth" });
-  }, [getTapDist, scrollContainerRef]);
+    c.scrollBy({ top: c.clientHeight * scrollRatio * TAP_MULTIPLIER, behavior: "smooth" });
+  }, [scrollRatio, scrollContainerRef]);
 
   return { handleScrollUp, handleScrollDown };
 }

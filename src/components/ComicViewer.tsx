@@ -2,16 +2,12 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useComicViewer } from "../hooks/useComicViewer";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import Toolbar from "./Toolbar";
 import ImageViewer from "./ImageViewer";
 import Navigation from "./Navigation";
-import type { ReadingHistory } from "../types";
+import type { ChapterSequenceItem, ReadingHistory } from "../types";
 import { normalizeLibraryPathId } from "../utils/libraryUtils";
-
-interface ChapterSequenceItem {
-  name: string;
-  path: string;
-}
 
 export default function ComicViewer() {
   const { state, actions } = useComicViewer();
@@ -49,6 +45,28 @@ export default function ComicViewer() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isFullscreen, toggleFullscreen]);
 
+  // 全局键盘快捷键（←/A/D/空格/F/Home/End/+/-/0/M/PageUp/PageDown）
+  const goToFirst = useCallback(() => {
+    if (state.files.length > 0) actions.goToPage(0);
+  }, [state.files.length, actions.goToPage]);
+  const goToLast = useCallback(() => {
+    if (state.files.length > 0) actions.goToPage(state.files.length - 1);
+  }, [state.files.length, actions.goToPage]);
+
+  useKeyboardShortcuts({
+    viewMode: state.viewMode,
+    onNextPage: actions.nextPage,
+    onPrevPage: actions.prevPage,
+    onLoadNextFolder: actions.loadNextFolder,
+    onZoomIn: actions.zoomIn,
+    onZoomOut: actions.zoomOut,
+    onResetZoom: actions.resetZoom,
+    onToggleFullscreen: toggleFullscreen,
+    onToggleViewMode: actions.toggleViewMode,
+    onGoToFirst: goToFirst,
+    onGoToLast: goToLast,
+  });
+
   const chapterSequence = (() => {
     const rawSequence = sessionStorage.getItem("comicChapterSequence");
     if (!rawSequence) {
@@ -80,10 +98,14 @@ export default function ComicViewer() {
   const openChapterBySequence = useCallback(
     async (chapter: ChapterSequenceItem | null) => {
       if (!chapter) return;
-      sessionStorage.removeItem("continueReading");
-      setRestoreHistory(null);
-      sessionStorage.setItem("openComicFolder", JSON.stringify(chapter));
-      await actions.handleFolderSelect();
+      try {
+        sessionStorage.removeItem("continueReading");
+        setRestoreHistory(null);
+        sessionStorage.setItem("openComicFolder", JSON.stringify(chapter));
+        await actions.handleFolderSelect();
+      } catch (error) {
+        console.error("切换章节失败:", error);
+      }
     },
     [actions],
   );

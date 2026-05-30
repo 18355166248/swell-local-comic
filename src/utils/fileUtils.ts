@@ -3,23 +3,10 @@ import type {
   ComicFile,
   ComicLibraryScanResult,
   FolderInfo,
-  ImageFileInfo,
 } from "../types";
 
-// 支持的图片格式
-export const IMAGE_EXTENSIONS = [
-  ".jpg",
-  ".jpeg",
-  ".png",
-  ".gif",
-  ".webp",
-  ".bmp",
-];
-
-export const isImageFile = (filename: string): boolean => {
-  const extension = filename.toLowerCase().substring(filename.lastIndexOf("."));
-  return IMAGE_EXTENSIONS.includes(extension);
-};
+/** 键盘滚动步长的默认值（占视口高度的比例） */
+export const DEFAULT_SCROLL_RATIO = 0.94;
 
 export const selectFolder = async (): Promise<FolderInfo | null> => {
   try {
@@ -140,15 +127,9 @@ export const scanImageFiles = async (
   folderPath: string
 ): Promise<ComicFile[]> => {
   try {
-    const imageFiles: ImageFileInfo[] = await invoke("read_image_files", {
+    const files: ComicFile[] = await invoke("read_image_files", {
       folderPath,
     });
-
-    // 转换为ComicFile格式
-    const files = imageFiles.map((file) => ({
-      name: file.name,
-      path: file.path,
-    }));
 
     // 使用自然排序对文件进行排序
     files.sort((a, b) => naturalSort(a.name, b.name));
@@ -200,9 +181,12 @@ export async function loadImagesInBatches(
   const urls: string[] = [];
   for (let i = 0; i < files.length; i += batchSize) {
     const batch = files.slice(i, i + batchSize);
-    const batchUrls = await Promise.all(
+    const batchResults = await Promise.allSettled(
       batch.map((file) => loadImageFile(file)),
     );
+    const batchUrls = batchResults
+      .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled")
+      .map((r) => r.value);
     urls.push(...batchUrls);
     const progress = Math.round(((i + batchSize) / files.length) * 100);
     onProgress([...urls], Math.min(progress, 100));

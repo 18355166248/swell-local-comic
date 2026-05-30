@@ -6,14 +6,11 @@ interface UseCurrentImageDetectionOptions {
   imageUrls: string[];
   imagesPerGroup: number;
   onCurrentImageChange?: (index: number) => void;
-  imageWidth: number;
-  zoom: number;
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
 }
 
 /**
  * 用 IntersectionObserver 检测当前可见的图片组。
- * 不再用 getBoundingClientRect + scroll 事件强制回流。
  */
 export function useCurrentImageDetection({
   viewMode,
@@ -23,7 +20,6 @@ export function useCurrentImageDetection({
   scrollContainerRef,
 }: UseCurrentImageDetectionOptions) {
   const observerRef = useRef<IntersectionObserver | null>(null);
-  // 记录每个元素当前的可见比例
   const visibilityMapRef = useRef<Map<number, number>>(new Map());
 
   useEffect(() => {
@@ -38,7 +34,6 @@ export function useCurrentImageDetection({
     const container = scrollContainerRef.current;
     if (!container) return;
 
-    // 清理旧 observer
     if (observerRef.current) {
       observerRef.current.disconnect();
     }
@@ -69,7 +64,6 @@ export function useCurrentImageDetection({
           );
           visibilityMapRef.current.set(idx, entry.intersectionRatio);
         }
-        // 防抖避免频繁回调
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(pickBest, 100);
       },

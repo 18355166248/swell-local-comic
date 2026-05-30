@@ -106,17 +106,6 @@ export const deleteHistory = (folderPath: string): void => {
   }
 };
 
-// 根据文件夹名称删除历史记录（向后兼容）
-export const deleteHistoryByName = (folderName: string): void => {
-  try {
-    const histories = getAllHistory();
-    const filtered = histories.filter((h) => h.folderName !== folderName);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
-  } catch (error) {
-    console.error("删除历史记录失败:", error);
-  }
-};
-
 // 清空所有历史记录
 export const clearAllHistory = (): void => {
   try {
@@ -126,15 +115,4 @@ export const clearAllHistory = (): void => {
   }
 };
 
-// 获取指定文件夹的历史记录
-export const getHistoryByFolder = (folderPath: string): ReadingHistory | null => {
-  const histories = getAllHistory();
-  return histories.find((h) => h.folderPath === folderPath) || null;
-};
-
-// 根据文件夹名称获取历史记录（向后兼容）
-export const getHistoryByFolderName = (folderName: string): ReadingHistory | null => {
-  const histories = getAllHistory();
-  return histories.find((h) => h.folderName === folderName) || null;
-};
 
