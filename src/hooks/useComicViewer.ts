@@ -42,18 +42,35 @@ export const useComicViewer = () => {
   const preloadCacheRef = useRef<Map<string, string>>(new Map());
 
   // 同步 ref，避免 loadNextFolder 依赖 isLoading state 导致级联重建
-  isLoadingRef.current = isLoading;
+  useEffect(() => {
+    isLoadingRef.current = isLoading;
+  }, [isLoading]);
+
+  const revokePageImageUrls = useCallback(() => {
+    const cachedUrls = new Set(preloadCacheRef.current.values());
+    cachedUrls.forEach((url) => {
+      if (url.startsWith("blob:")) {
+        URL.revokeObjectURL(url);
+      }
+    });
+    preloadCacheRef.current.clear();
+
+    if (
+      currentImageUrlRef.current &&
+      !cachedUrls.has(currentImageUrlRef.current) &&
+      currentImageUrlRef.current.startsWith("blob:")
+    ) {
+      URL.revokeObjectURL(currentImageUrlRef.current);
+    }
+    currentImageUrlRef.current = "";
+  }, []);
 
   const handleFolderSelect = useCallback(async () => {
     try {
       // 在加载新文件夹前 revoke 旧的 blob URL
       revokeImageUrls(currentImageUrlsRef.current);
       currentImageUrlsRef.current = [];
-      if (currentImageUrlRef.current) {
-        URL.revokeObjectURL(currentImageUrlRef.current);
-        currentImageUrlRef.current = "";
-      }
-      preloadCacheRef.current.clear();
+      revokePageImageUrls();
 
       // 检查是否有直接恢复的历史记录
       const directRestore = sessionStorage.getItem("directRestore");
@@ -110,6 +127,8 @@ export const useComicViewer = () => {
 
             setCurrentIndex(correctIndex);
             const url = await loadImageFile(sortedFiles[correctIndex]);
+            currentImageUrlRef.current = url;
+            preloadCacheRef.current.set(sortedFiles[correctIndex].path, url);
             setImageUrl(url);
 
             // 如果是滚动模式，基于排序后的文件重新生成图片URLs
@@ -208,6 +227,8 @@ export const useComicViewer = () => {
 
         setCurrentIndex(correctIndex);
         const url = await loadImageFile(fileList[correctIndex]);
+        currentImageUrlRef.current = url;
+        preloadCacheRef.current.set(fileList[correctIndex].path, url);
         setImageUrl(url);
 
         // 如果是滚动模式，分批加载所有图片
@@ -226,13 +247,18 @@ export const useComicViewer = () => {
     } catch (error) {
       console.error("选择文件夹失败:", error);
     }
-  }, [viewMode, imageWidth]);
+  }, [viewMode, imageWidth, revokePageImageUrls]);
 
   const loadImage = useCallback(async (file: ComicFile) => {
     try {
       const cached = preloadCacheRef.current.get(file.path);
       if (cached) {
-        if (currentImageUrlRef.current && currentImageUrlRef.current !== cached) {
+        const cachedUrls = new Set(preloadCacheRef.current.values());
+        if (
+          currentImageUrlRef.current &&
+          currentImageUrlRef.current !== cached &&
+          !cachedUrls.has(currentImageUrlRef.current)
+        ) {
           URL.revokeObjectURL(currentImageUrlRef.current);
         }
         currentImageUrlRef.current = cached;
@@ -240,7 +266,11 @@ export const useComicViewer = () => {
         return;
       }
 
-      if (currentImageUrlRef.current) {
+      const cachedUrls = new Set(preloadCacheRef.current.values());
+      if (
+        currentImageUrlRef.current &&
+        !cachedUrls.has(currentImageUrlRef.current)
+      ) {
         URL.revokeObjectURL(currentImageUrlRef.current);
       }
       const url = await loadImageFile(file);
@@ -308,10 +338,7 @@ export const useComicViewer = () => {
       // 先 revoke 旧 blob URL，再清空当前图片列表
       revokeImageUrls(currentImageUrlsRef.current);
       currentImageUrlsRef.current = [];
-      if (currentImageUrlRef.current) {
-        URL.revokeObjectURL(currentImageUrlRef.current);
-        currentImageUrlRef.current = "";
-      }
+      revokePageImageUrls();
 
       // 先清空当前图片列表并显示 loading
       setFiles([]);
@@ -340,6 +367,8 @@ export const useComicViewer = () => {
         if (isPageMode) {
           // 分页模式：只加载第一张图片
           const url = await loadImageFile(sortedNewFiles[0]);
+          currentImageUrlRef.current = url;
+          preloadCacheRef.current.set(sortedNewFiles[0].path, url);
           setImageUrl(url);
           setLoadingProgress(100);
         } else {
@@ -357,8 +386,15 @@ export const useComicViewer = () => {
         isLoadingNextFolderRef.current = false;
       }
     },
-    [viewMode]
+    [viewMode, revokePageImageUrls]
   );
+
+  useEffect(() => {
+    return () => {
+      revokeImageUrls(currentImageUrlsRef.current);
+      revokePageImageUrls();
+    };
+  }, [revokePageImageUrls]);
 
   /** 后台预加载相邻图片（距离当前页 ±2），翻页瞬间无闪烁 */
   const preloadAdjacent = useCallback(

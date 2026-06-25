@@ -34,9 +34,11 @@ export function useScrollKeyboard({
   // ref mirror of scrollRatio so effect doesn't rebuild on slider drag
   const scrollRatioRef = useRef(scrollRatio);
 
-  isLoadingRef.current = isLoading;
-  onLoadNextRef.current = onLoadNextFolderAtBottom;
-  scrollRatioRef.current = scrollRatio;
+  useEffect(() => {
+    isLoadingRef.current = isLoading;
+    onLoadNextRef.current = onLoadNextFolderAtBottom;
+    scrollRatioRef.current = scrollRatio;
+  }, [isLoading, onLoadNextFolderAtBottom, scrollRatio]);
 
   // 不依赖 scrollRatio/isLoading/onLoadNext，避免 effect 频繁销毁重建
   useEffect(() => {
@@ -130,16 +132,20 @@ export function useScrollKeyboard({
       intervalRef.current = window.setInterval(tick, HOLD_INTERVAL_MS);
     }
 
+    const onVisibilityChange = () => {
+      if (document.hidden) clearAll();
+    };
+
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("blur", clearAll);
-    document.addEventListener("visibilitychange", () => { if (document.hidden) clearAll(); });
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", clearAll);
-      document.removeEventListener("visibilitychange", clearAll as EventListener);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       clearAll();
     };
   }, [viewMode, scrollContainerRef]);

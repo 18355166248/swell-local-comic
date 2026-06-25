@@ -46,12 +46,13 @@ export default function ComicViewer() {
   }, [isFullscreen, toggleFullscreen]);
 
   // 全局键盘快捷键（←/A/D/空格/F/Home/End/+/-/0/M/PageUp/PageDown）
+  const { goToPage } = actions;
   const goToFirst = useCallback(() => {
-    if (state.files.length > 0) actions.goToPage(0);
-  }, [state.files.length, actions.goToPage]);
+    if (state.files.length > 0) goToPage(0);
+  }, [state.files.length, goToPage]);
   const goToLast = useCallback(() => {
-    if (state.files.length > 0) actions.goToPage(state.files.length - 1);
-  }, [state.files.length, actions.goToPage]);
+    if (state.files.length > 0) goToPage(state.files.length - 1);
+  }, [state.files.length, goToPage]);
 
   useKeyboardShortcuts({
     viewMode: state.viewMode,
