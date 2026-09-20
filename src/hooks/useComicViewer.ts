@@ -40,6 +40,8 @@ export const useComicViewer = () => {
   const currentImageUrlsRef = useRef<string[]>([]);
   const currentImageUrlRef = useRef<string>("");
   const preloadCacheRef = useRef<Map<string, string>>(new Map());
+  const imageLoadPromisesRef = useRef<Map<string, Promise<string>>>(new Map());
+  const pageRequestRef = useRef(0);
 
   // 同步 ref，避免 loadNextFolder 依赖 isLoading state 导致级联重建
   useEffect(() => {
@@ -63,6 +65,21 @@ export const useComicViewer = () => {
       URL.revokeObjectURL(currentImageUrlRef.current);
     }
     currentImageUrlRef.current = "";
+    imageLoadPromisesRef.current.clear();
+  }, []);
+
+  /** 按文件路径去重加载，保证同一文件只有一个 blob URL，避免并发加载互相覆盖缓存 */
+  const getOrLoadImageFile = useCallback((file: ComicFile): Promise<string> => {
+    const inFlight = imageLoadPromisesRef.current.get(file.path);
+    if (inFlight) return inFlight;
+
+    const promise = loadImageFile(file).catch((error) => {
+      // 加载失败时移除去重记录，允许下次翻页重新尝试
+      imageLoadPromisesRef.current.delete(file.path);
+      throw error;
+    });
+    imageLoadPromisesRef.current.set(file.path, promise);
+    return promise;
   }, []);
 
   const handleFolderSelect = useCallback(async () => {
@@ -126,7 +143,7 @@ export const useComicViewer = () => {
             }
 
             setCurrentIndex(correctIndex);
-            const url = await loadImageFile(sortedFiles[correctIndex]);
+            const url = await getOrLoadImageFile(sortedFiles[correctIndex]);
             currentImageUrlRef.current = url;
             preloadCacheRef.current.set(sortedFiles[correctIndex].path, url);
             setImageUrl(url);
@@ -226,7 +243,7 @@ export const useComicViewer = () => {
         }
 
         setCurrentIndex(correctIndex);
-        const url = await loadImageFile(fileList[correctIndex]);
+        const url = await getOrLoadImageFile(fileList[correctIndex]);
         currentImageUrlRef.current = url;
         preloadCacheRef.current.set(fileList[correctIndex].path, url);
         setImageUrl(url);
@@ -250,9 +267,11 @@ export const useComicViewer = () => {
   }, [viewMode, imageWidth, revokePageImageUrls]);
 
   const loadImage = useCallback(async (file: ComicFile) => {
+    const requestId = ++pageRequestRef.current;
     try {
       const cached = preloadCacheRef.current.get(file.path);
       if (cached) {
+        if (requestId !== pageRequestRef.current) return; // 已有更新的翻页请求，丢弃过期结果
         const cachedUrls = new Set(preloadCacheRef.current.values());
         if (
           currentImageUrlRef.current &&
@@ -266,21 +285,23 @@ export const useComicViewer = () => {
         return;
       }
 
+      const url = await getOrLoadImageFile(file);
+      if (requestId !== pageRequestRef.current) return; // 已有更新的翻页请求，丢弃过期结果
+      preloadCacheRef.current.set(file.path, url);
       const cachedUrls = new Set(preloadCacheRef.current.values());
       if (
         currentImageUrlRef.current &&
+        currentImageUrlRef.current !== url &&
         !cachedUrls.has(currentImageUrlRef.current)
       ) {
         URL.revokeObjectURL(currentImageUrlRef.current);
       }
-      const url = await loadImageFile(file);
-      preloadCacheRef.current.set(file.path, url);
       currentImageUrlRef.current = url;
       setImageUrl(url);
     } catch (error) {
       console.error("加载图片失败:", error);
     }
-  }, []);
+  }, [getOrLoadImageFile]);
 
   /** 滚动/分页模式下加载同级下一文件夹：先清空当前列表，再加载下一文件夹，显示 loading */
   const loadNextFolder = useCallback(
@@ -366,7 +387,7 @@ export const useComicViewer = () => {
 
         if (isPageMode) {
           // 分页模式：只加载第一张图片
-          const url = await loadImageFile(sortedNewFiles[0]);
+          const url = await getOrLoadImageFile(sortedNewFiles[0]);
           currentImageUrlRef.current = url;
           preloadCacheRef.current.set(sortedNewFiles[0].path, url);
           setImageUrl(url);
@@ -406,13 +427,13 @@ export const useComicViewer = () => {
         if (i === baseIndex) continue;
         const file = files[i];
         if (!preloadCacheRef.current.has(file.path)) {
-          loadImageFile(file).then((url) => {
+          getOrLoadImageFile(file).then((url) => {
             preloadCacheRef.current.set(file.path, url);
           }).catch(() => { /* 静默失败，翻页时重新加载 */ });
         }
       }
     },
-    [files, viewMode],
+    [files, viewMode, getOrLoadImageFile],
   );
 
   const nextPage = useCallback(async () => {
