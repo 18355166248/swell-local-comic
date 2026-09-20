@@ -11,6 +11,7 @@ import {
 import {
   getHistoryProgressText,
   getRecentHistoryForLibrary,
+  isPathInsideRoot,
 } from "../utils/libraryUtils";
 import { getAllHistory } from "../utils/historyUtils";
 
@@ -72,6 +73,8 @@ export default function LibraryHome() {
       const folder = await selectFolder();
       if (!folder) return;
       sessionStorage.setItem("openComicFolder", JSON.stringify(folder));
+      // 临时打开不属于任何书库，清空章节序列，避免残留导致章节导航误判
+      sessionStorage.removeItem("comicChapterSequence");
       navigate("/viewer?openFolder=true");
     } finally {
       setIsAdding(false);
@@ -83,9 +86,36 @@ export default function LibraryHome() {
     navigate(`/library?root=${encodeURIComponent(item.id)}`);
   };
 
-  const continueRecent = (history: ReadingHistory) => {
+  const continueRecent = async (history: ReadingHistory) => {
     sessionStorage.setItem("continueReading", JSON.stringify(history));
     sessionStorage.setItem("currentFolderPath", history.folderPath);
+
+    // 章节导航依赖 comicChapterSequence：找到包含该历史记录的书库并扫描，生成章节序列。
+    // 从书库直接「继续」时不会经过 LibraryDetail，需要在这里补齐序列，否则上一章节/下一章节/当前进度都无法显示。
+    try {
+      const library = items.find((item) =>
+        isPathInsideRoot(history.folderPath, item.rootPath),
+      );
+      if (library) {
+        const result = await scanComicLibrary(library.rootPath);
+        sessionStorage.setItem(
+          "comicChapterSequence",
+          JSON.stringify(
+            result.chapters.map((chapter) => ({
+              name: chapter.name,
+              path: chapter.path,
+            })),
+          ),
+        );
+      } else {
+        // 找不到所属书库（例如书库已被移除），清空序列，回退到无章节导航
+        sessionStorage.removeItem("comicChapterSequence");
+      }
+    } catch (error) {
+      console.error("解析章节序列失败:", error);
+      sessionStorage.removeItem("comicChapterSequence");
+    }
+
     navigate("/viewer?fromContinueReading=true");
   };
 
