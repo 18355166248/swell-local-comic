@@ -43,6 +43,7 @@ export function useCurrentImageDetection({
     if (groups.length === 0) return;
 
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let hasScrolled = false;
 
     const pickBest = () => {
       let bestIndex = 0;
@@ -53,7 +54,7 @@ export function useCurrentImageDetection({
           bestIndex = idx;
         }
       });
-      onCurrentImageChange(bestIndex * imagesPerGroup);
+      if (bestRatio > 0) onCurrentImageChange(bestIndex * imagesPerGroup);
     };
 
     observerRef.current = new IntersectionObserver(
@@ -64,8 +65,10 @@ export function useCurrentImageDetection({
           );
           visibilityMapRef.current.set(idx, entry.intersectionRatio);
         }
-        if (debounceTimer) clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(pickBest, 100);
+        if (hasScrolled) {
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(pickBest, 100);
+        }
       },
       {
         root: container,
@@ -74,9 +77,12 @@ export function useCurrentImageDetection({
     );
 
     groups.forEach((el) => observerRef.current?.observe(el));
-
-    // 立即执行一次初始检测
-    setTimeout(pickBest, 100);
+    const handleScroll = () => {
+      hasScrolled = true;
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(pickBest, 100);
+    };
+    container.addEventListener("scroll", handleScroll, { passive: true });
 
     return () => {
       if (observerRef.current) {
@@ -84,6 +90,7 @@ export function useCurrentImageDetection({
         observerRef.current = null;
       }
       if (debounceTimer) clearTimeout(debounceTimer);
+      container.removeEventListener("scroll", handleScroll);
     };
   }, [
     viewMode,

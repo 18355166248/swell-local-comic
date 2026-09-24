@@ -5,7 +5,6 @@ interface UseKeyboardShortcutsOptions {
   viewMode: ViewMode;
   onNextPage: () => void;
   onPrevPage: () => void;
-  onLoadNextFolder: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onResetZoom: () => void;
@@ -13,6 +12,10 @@ interface UseKeyboardShortcutsOptions {
   onToggleViewMode: () => void;
   onGoToFirst: () => void;
   onGoToLast: () => void;
+  onScrollUp: () => void;
+  onScrollDown: () => void;
+  onScrollStart: () => void;
+  onScrollEnd: () => void;
 }
 
 /**
@@ -22,7 +25,6 @@ export function useKeyboardShortcuts({
   viewMode,
   onNextPage,
   onPrevPage,
-  onLoadNextFolder,
   onZoomIn,
   onZoomOut,
   onResetZoom,
@@ -30,6 +32,10 @@ export function useKeyboardShortcuts({
   onToggleViewMode,
   onGoToFirst,
   onGoToLast,
+  onScrollUp,
+  onScrollDown,
+  onScrollStart,
+  onScrollEnd,
 }: UseKeyboardShortcutsOptions) {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -37,7 +43,8 @@ export function useKeyboardShortcuts({
       if (
         target.tagName === "INPUT" ||
         target.tagName === "TEXTAREA" ||
-        target.isContentEditable
+        target.isContentEditable ||
+        Boolean(target.closest("button, a, select, [role='button']"))
       ) {
         return;
       }
@@ -46,28 +53,25 @@ export function useKeyboardShortcuts({
         case "ArrowRight":
         case " ":
           e.preventDefault();
-          onNextPage();
+          if (viewMode === "scroll") onScrollDown();
+          else onNextPage();
           break;
         case "ArrowLeft":
           e.preventDefault();
-          onPrevPage();
+          if (viewMode === "scroll") onScrollUp();
+          else onPrevPage();
           break;
         case "a":
         case "A":
-          if (viewMode === "page") {
-            e.preventDefault();
-            onPrevPage();
-          }
+          e.preventDefault();
+          if (viewMode === "scroll") onScrollUp();
+          else onPrevPage();
           break;
         case "d":
         case "D":
-          if (viewMode === "page") {
-            e.preventDefault();
-            onNextPage();
-          } else if (viewMode === "scroll") {
-            e.preventDefault();
-            onLoadNextFolder();
-          }
+          e.preventDefault();
+          if (viewMode === "scroll") onScrollDown();
+          else onNextPage();
           break;
         case "f":
         case "F":
@@ -81,19 +85,23 @@ export function useKeyboardShortcuts({
           break;
         case "Home":
           e.preventDefault();
-          onGoToFirst();
+          if (viewMode === "scroll") onScrollStart();
+          else onGoToFirst();
           break;
         case "End":
           e.preventDefault();
-          onGoToLast();
+          if (viewMode === "scroll") onScrollEnd();
+          else onGoToLast();
           break;
         case "PageUp":
           e.preventDefault();
-          onPrevPage();
+          if (viewMode === "scroll") onScrollUp();
+          else onPrevPage();
           break;
         case "PageDown":
           e.preventDefault();
-          onNextPage();
+          if (viewMode === "scroll") onScrollDown();
+          else onNextPage();
           break;
         case "+":
         case "=":
@@ -110,7 +118,7 @@ export function useKeyboardShortcuts({
           break;
       }
     },
-    [viewMode, onNextPage, onPrevPage, onLoadNextFolder, onZoomIn, onZoomOut, onResetZoom, onToggleFullscreen, onToggleViewMode, onGoToFirst, onGoToLast],
+    [viewMode, onNextPage, onPrevPage, onZoomIn, onZoomOut, onResetZoom, onToggleFullscreen, onToggleViewMode, onGoToFirst, onGoToLast, onScrollUp, onScrollDown, onScrollStart, onScrollEnd],
   );
 
   useEffect(() => {

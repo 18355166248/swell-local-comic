@@ -22,6 +22,7 @@ export default function ComicViewer() {
   >("original");
   const hasProcessedOpenFolder = useRef(false);
   const hasProcessedContinueReading = useRef(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const toggleFullscreen = useCallback(async () => {
     try {
@@ -47,6 +48,8 @@ export default function ComicViewer() {
 
   // 全局键盘快捷键（←/A/D/空格/F/Home/End/+/-/0/M/PageUp/PageDown）
   const { goToPage } = actions;
+  const { loadNextFolder } = actions;
+  const { scrollRatio } = state;
   const goToFirst = useCallback(() => {
     if (state.files.length > 0) goToPage(0);
   }, [state.files.length, goToPage]);
@@ -54,11 +57,26 @@ export default function ComicViewer() {
     if (state.files.length > 0) goToPage(state.files.length - 1);
   }, [state.files.length, goToPage]);
 
+  const scrollByPage = useCallback((direction: -1 | 1) => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    if (direction === 1 && container.scrollHeight - container.scrollTop - container.clientHeight <= 5) {
+      loadNextFolder();
+      return;
+    }
+    container.scrollBy({ top: direction * container.clientHeight * scrollRatio * 0.85, behavior: "smooth" });
+  }, [loadNextFolder, scrollRatio]);
+
+  const scrollToEdge = useCallback((edge: "start" | "end") => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    container.scrollTo({ top: edge === "start" ? 0 : container.scrollHeight, behavior: "auto" });
+  }, []);
+
   useKeyboardShortcuts({
     viewMode: state.viewMode,
     onNextPage: actions.nextPage,
     onPrevPage: actions.prevPage,
-    onLoadNextFolder: actions.loadNextFolder,
     onZoomIn: actions.zoomIn,
     onZoomOut: actions.zoomOut,
     onResetZoom: actions.resetZoom,
@@ -66,6 +84,10 @@ export default function ComicViewer() {
     onToggleViewMode: actions.toggleViewMode,
     onGoToFirst: goToFirst,
     onGoToLast: goToLast,
+    onScrollUp: () => scrollByPage(-1),
+    onScrollDown: () => scrollByPage(1),
+    onScrollStart: () => scrollToEdge("start"),
+    onScrollEnd: () => scrollToEdge("end"),
   });
 
   const chapterSequence = (() => {
@@ -134,7 +156,6 @@ export default function ComicViewer() {
         sessionStorage.setItem("restoreState", JSON.stringify(restoreHistory));
         sessionStorage.removeItem("continueReading");
         setRestoreHistory(null);
-        return;
       }
 
       await actions.handleFolderSelect();
@@ -262,6 +283,7 @@ export default function ComicViewer() {
             )}
 
             <ImageViewer
+              scrollContainerRef={scrollContainerRef}
               imageUrl={state.imageUrl}
               currentFileName={state.files[state.currentIndex]?.name}
               zoom={state.zoom}
@@ -287,6 +309,7 @@ export default function ComicViewer() {
                   ? actions.onCurrentImageChange
                   : undefined
               }
+              onRetryImage={actions.retryImage}
               isLoading={state.isLoading}
               imagesPerGroup={imagesPerGroup}
               isFullscreen={isFullscreen}
@@ -300,6 +323,7 @@ export default function ComicViewer() {
                   ? state.scrollPosition / (state.scrollHeight ?? 1)
                   : undefined
               }
+              scrollTargetIndex={state.scrollTargetIndex}
               fullscreenImageFit={fullscreenImageFit}
               onFullscreenImageFitChange={setFullscreenImageFit}
             />
@@ -331,6 +355,11 @@ export default function ComicViewer() {
                 {progressValue}% ({progressCount} / {totalCount})
               </div>
             </div>
+          </div>
+        )}
+        {state.error && !state.isLoading && (
+          <div role="alert" className="absolute bottom-4 left-1/2 z-50 max-w-[80%] -translate-x-1/2 rounded-lg border border-red-400/30 bg-gray-950/95 px-4 py-2 text-center text-sm text-red-100 shadow-xl">
+            {state.error}
           </div>
         )}
       </div>

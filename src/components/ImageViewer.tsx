@@ -1,4 +1,4 @@
-import { useRef, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { DEFAULT_SCROLL_RATIO } from "../utils/fileUtils";
 import type { ViewMode } from "../types";
 import { useImageGroups } from "../hooks/useImageGroups";
@@ -9,6 +9,7 @@ import { useScrollPosition } from "../hooks/useScrollPosition";
 import { useCurrentImageDetection } from "../hooks/useCurrentImageDetection";
 
 interface ImageViewerProps {
+  scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   imageUrl: string;
   currentFileName?: string;
   zoom: number;
@@ -22,6 +23,7 @@ interface ImageViewerProps {
   onScrollPositionChange?: (position: number, height: number) => void; // 滚动位置变化回调，包含位置和总高度
   onLoadNextFolder?: () => void; // 加载下一文件夹（底部点击下键/S键/D键触发）
   onCurrentImageChange?: (index: number) => void; // 当前可见图片索引变化回调
+  onRetryImage?: (index: number) => void;
   isLoading?: boolean; // 是否正在加载
   imagesPerGroup?: number; // 每组图片数量，默认1（每张图片单独显示），可以配置成5（每5张合成一张）
   isFullscreen?: boolean;
@@ -29,11 +31,13 @@ interface ImageViewerProps {
   currentIndex?: number;
   totalFiles?: number;
   scrollPositionRatio?: number; // 滚动模式下的滚动进度 0-1
+  scrollTargetIndex?: number | null;
   fullscreenImageFit?: "original" | "fit"; // 全屏时图片显示：原图大小 / 适应屏幕
   onFullscreenImageFitChange?: (mode: "original" | "fit") => void;
 }
 
 export default function ImageViewer({
+  scrollContainerRef,
   imageUrl,
   currentFileName,
   zoom,
@@ -47,6 +51,7 @@ export default function ImageViewer({
   onScrollPositionChange,
   onLoadNextFolder,
   onCurrentImageChange,
+  onRetryImage,
   isLoading = false,
   imagesPerGroup = 1,
   isFullscreen = false,
@@ -54,12 +59,30 @@ export default function ImageViewer({
   currentIndex = 0,
   totalFiles = 0,
   scrollPositionRatio,
+  scrollTargetIndex = null,
   fullscreenImageFit = "original",
   onFullscreenImageFitChange,
 }: ImageViewerProps) {
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const pageContainerRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
+  const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+  const [failedUrls, setFailedUrls] = useState<Set<string>>(() => new Set());
+  const markImageFailed = useCallback((url: string) => {
+    setFailedUrls((current) => new Set(current).add(url));
+  }, []);
   /** 判定「已到底部」的阈值：距离底部小于等于此像素视为到底 */
   const AT_BOTTOM_THRESHOLD = 5;
+
+  useEffect(() => {
+    if (viewMode !== "page" || !pageContainerRef.current) return;
+    const container = pageContainerRef.current;
+    const updateSize = () => setViewportSize({ width: container.clientWidth, height: container.clientHeight });
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [viewMode]);
 
   // 使用自定义 hooks
   const imageGroups = useImageGroups(
@@ -79,7 +102,8 @@ export default function ImageViewer({
 
   useScrollPosition({
     viewMode,
-    scrollPosition,
+    restoreKey: files[0]?.path ?? "",
+    scrollPosition: scrollTargetIndex === null ? scrollPosition : undefined,
     onScrollPositionChange,
     imageUrls,
     isLoading,
@@ -93,6 +117,32 @@ export default function ImageViewer({
     onCurrentImageChange,
     scrollContainerRef,
   });
+
+  const lastJumpRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (viewMode !== "scroll") {
+      lastJumpRef.current = null;
+      return;
+    }
+    if (scrollTargetIndex === null || isLoading || imageUrls.length !== files.length) return;
+    const key = `${files[0]?.path}:${scrollTargetIndex}:${imagesPerGroup}`;
+    if (lastJumpRef.current === key) return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    lastJumpRef.current = key;
+    const groupIndex = Math.floor(scrollTargetIndex / imagesPerGroup);
+    const jump = () => {
+      const group = container.querySelector<HTMLElement>(`[data-image-group="${groupIndex}"]`);
+      if (!group) return;
+      container.scrollTop += group.getBoundingClientRect().top - container.getBoundingClientRect().top;
+    };
+    const frame = requestAnimationFrame(jump);
+    const timer = window.setTimeout(jump, 500);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [viewMode, scrollTargetIndex, isLoading, imageUrls.length, files, imagesPerGroup, scrollContainerRef]);
 
   // 向下滚动：若已在底部则加载下一文件夹，否则执行滚动（需用户主动点击/S键触发）
   const handleScrollDownClick = useCallback(() => {
@@ -112,7 +162,17 @@ export default function ImageViewer({
     } else {
       handleScrollDown();
     }
-  }, [handleScrollDown, onLoadNextFolder, isLoading]);
+  }, [handleScrollDown, onLoadNextFolder, isLoading, scrollContainerRef]);
+
+  if ((!imageUrl || failedUrls.has(imageUrl)) && imageUrls.length === 0 && files.length > 0 && !isLoading) {
+    return (
+      <div className="flex h-full items-center justify-center text-gray-200">
+        <button type="button" onClick={() => onRetryImage?.(currentIndex)} className="rounded-xl border border-white/10 bg-gray-800 px-6 py-4 hover:bg-gray-700">
+          当前图片加载失败，点击重试
+        </button>
+      </div>
+    );
+  }
 
   if (!imageUrl && imageUrls.length === 0) {
     return (
@@ -165,12 +225,26 @@ export default function ImageViewer({
               >
                 {group.urls.map((url, imgIndex) => {
                   const fileIndex = groupIndex * imagesPerGroup + imgIndex;
+                  if (!url || failedUrls.has(url)) {
+                    return (
+                      <button
+                        key={imgIndex}
+                        type="button"
+                        onClick={() => onRetryImage?.(fileIndex)}
+                        className="flex min-h-[50vh] items-center justify-center bg-gray-800 px-4 text-sm text-gray-200 hover:bg-gray-700"
+                        style={{ width: `${100 / group.urls.length}%` }}
+                      >
+                        {group.files[imgIndex]?.name || `第 ${fileIndex + 1} 页`} 加载失败，点击重试
+                      </button>
+                    );
+                  }
                   return (
                     <img
                       key={imgIndex}
                       src={url}
                       alt={group.files[imgIndex]?.name || `图片 ${fileIndex + 1}`}
                       className="select-none"
+                      onError={() => markImageFailed(url)}
                       style={{
                         width: `${100 / group.urls.length}%`,
                         height: "auto",
@@ -234,28 +308,45 @@ export default function ImageViewer({
   // 分页模式：显示单张图片
   const isFullscreenFit =
     isFullscreen && fullscreenImageFit === "fit";
+  const fitScale = naturalSize.width && naturalSize.height && viewportSize.width && viewportSize.height
+    ? Math.min(1, viewportSize.width / naturalSize.width, viewportSize.height / naturalSize.height)
+    : 1;
+  const displayWidth = naturalSize.width * fitScale * zoom;
+  const displayHeight = naturalSize.height * fitScale * zoom;
 
   return (
     <div className="h-full relative">
       <div
-        className={`h-full flex items-center justify-center cursor-grab w-full ${isFullscreenFit ? "p-0" : ""}`}
+        ref={pageContainerRef}
+        className={`h-full w-full overflow-auto ${zoom > 1 && !isFullscreenFit ? "cursor-grab active:cursor-grabbing" : ""}`}
         onWheel={onWheel}
+        onPointerDown={(event) => {
+          const container = pageContainerRef.current;
+          if (!container || zoom <= 1 || isFullscreenFit || event.button !== 0) return;
+          dragRef.current = { x: event.clientX, y: event.clientY, left: container.scrollLeft, top: container.scrollTop };
+          container.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          const container = pageContainerRef.current;
+          if (!container || !dragRef.current) return;
+          container.scrollLeft = dragRef.current.left - (event.clientX - dragRef.current.x);
+          container.scrollTop = dragRef.current.top - (event.clientY - dragRef.current.y);
+        }}
+        onPointerUp={() => { dragRef.current = null; }}
+        onPointerCancel={() => { dragRef.current = null; }}
       >
-        <img
-          src={imageUrl}
-          alt={currentFileName}
-          className={`select-none object-contain ${
-            isFullscreenFit
-              ? "w-full h-full"
-              : "max-h-full max-w-full"
-          }`}
-          style={
-            isFullscreenFit
-              ? undefined
-              : { transform: `scale(${zoom})` }
-          }
-          draggable={false}
-        />
+        <div className="flex min-h-full min-w-full items-center justify-center" style={isFullscreenFit ? undefined : { width: displayWidth || undefined, height: displayHeight || undefined }}>
+          <img
+            key={imageUrl}
+            src={imageUrl}
+            alt={currentFileName}
+            className={`select-none object-contain ${isFullscreenFit ? "h-full w-full" : ""}`}
+            style={isFullscreenFit ? undefined : { width: displayWidth || undefined, height: displayHeight || undefined, maxWidth: "none", maxHeight: "none" }}
+            onLoad={(event) => setNaturalSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })}
+            onError={() => markImageFailed(imageUrl)}
+            draggable={false}
+          />
+        </div>
       </div>
       {/* 非全屏时的全屏快捷按钮 */}
       {!isFullscreen && onToggleFullscreen && totalFiles > 0 && (

@@ -49,7 +49,7 @@ export function useScrollKeyboard({
 
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) {
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable || target.closest("button, a, select, [role='button']")) {
         return;
       }
 

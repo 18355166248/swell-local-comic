@@ -176,20 +176,29 @@ export const loadImageFile = async (file: ComicFile): Promise<string> => {
 export async function loadImagesInBatches(
   files: ComicFile[],
   onProgress: (urls: string[], progress: number) => void,
+  isCancelled: () => boolean = () => false,
 ): Promise<string[]> {
   const batchSize = 10;
   const urls: string[] = [];
   for (let i = 0; i < files.length; i += batchSize) {
+    if (isCancelled()) {
+      return [];
+    }
     const batch = files.slice(i, i + batchSize);
     const batchResults = await Promise.allSettled(
       batch.map((file) => loadImageFile(file)),
     );
-    const batchUrls = batchResults
-      .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled")
-      .map((r) => r.value);
+    const batchUrls = batchResults.map((result) =>
+      result.status === "fulfilled" ? result.value : "",
+    );
+    if (isCancelled()) {
+      revokeImageUrls(batchUrls);
+      return [];
+    }
     urls.push(...batchUrls);
     const progress = Math.round(((i + batchSize) / files.length) * 100);
     onProgress([...urls], Math.min(progress, 100));
+    if (i + batchSize >= files.length) break;
     // 让出主线程以便浏览器渲染进度
     await new Promise((resolve) => {
       if (typeof requestIdleCallback !== "undefined") {
