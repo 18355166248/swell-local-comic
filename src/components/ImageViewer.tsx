@@ -65,7 +65,7 @@ export default function ImageViewer({
 }: ImageViewerProps) {
   const pageContainerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
-  const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
+  const [naturalSize, setNaturalSize] = useState({ url: "", width: 0, height: 0 });
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const [failedUrls, setFailedUrls] = useState<Set<string>>(() => new Set());
   const markImageFailed = useCallback((url: string) => {
@@ -82,7 +82,7 @@ export default function ImageViewer({
     const observer = new ResizeObserver(updateSize);
     observer.observe(container);
     return () => observer.disconnect();
-  }, [viewMode]);
+  }, [viewMode, imageUrl]);
 
   // 使用自定义 hooks
   const imageGroups = useImageGroups(
@@ -308,21 +308,26 @@ export default function ImageViewer({
   // 分页模式：显示单张图片
   const isFullscreenFit =
     isFullscreen && fullscreenImageFit === "fit";
-  const fitScale = naturalSize.width && naturalSize.height && viewportSize.width && viewportSize.height
-    ? Math.min(1, viewportSize.width / naturalSize.width, viewportSize.height / naturalSize.height)
+  const currentNaturalSize = naturalSize.url === imageUrl ? naturalSize : null;
+  const fitScale = currentNaturalSize && viewportSize.width && viewportSize.height
+    ? isFullscreen ? 1 : Math.min(1, viewportSize.width / currentNaturalSize.width, viewportSize.height / currentNaturalSize.height)
     : 1;
-  const displayWidth = naturalSize.width * fitScale * zoom;
-  const displayHeight = naturalSize.height * fitScale * zoom;
+  const displayWidth = (currentNaturalSize?.width ?? 0) * fitScale * zoom;
+  const displayHeight = (currentNaturalSize?.height ?? 0) * fitScale * zoom;
+  const canPanPage = !isFullscreenFit && (displayWidth > viewportSize.width || displayHeight > viewportSize.height);
 
   return (
     <div className="h-full relative">
       <div
         ref={pageContainerRef}
-        className={`h-full w-full overflow-auto ${zoom > 1 && !isFullscreenFit ? "cursor-grab active:cursor-grabbing" : ""}`}
-        onWheel={onWheel}
+        className={`h-full w-full ${isFullscreenFit ? "overflow-hidden" : "overflow-auto"} ${canPanPage ? "cursor-grab active:cursor-grabbing" : ""}`}
+        onWheel={(event) => {
+          if (isFullscreenFit) event.preventDefault();
+          else onWheel(event);
+        }}
         onPointerDown={(event) => {
           const container = pageContainerRef.current;
-          if (!container || zoom <= 1 || isFullscreenFit || event.button !== 0) return;
+          if (!container || !canPanPage || event.button !== 0) return;
           dragRef.current = { x: event.clientX, y: event.clientY, left: container.scrollLeft, top: container.scrollTop };
           container.setPointerCapture(event.pointerId);
         }}
@@ -335,14 +340,14 @@ export default function ImageViewer({
         onPointerUp={() => { dragRef.current = null; }}
         onPointerCancel={() => { dragRef.current = null; }}
       >
-        <div className="flex min-h-full min-w-full items-center justify-center" style={isFullscreenFit ? undefined : { width: displayWidth || undefined, height: displayHeight || undefined }}>
+        <div className={`flex items-center justify-center ${isFullscreenFit ? "h-full w-full" : "min-h-full min-w-full"}`} style={isFullscreenFit ? undefined : { width: displayWidth || undefined, height: displayHeight || undefined }}>
           <img
             key={imageUrl}
             src={imageUrl}
             alt={currentFileName}
             className={`select-none object-contain ${isFullscreenFit ? "h-full w-full" : ""}`}
-            style={isFullscreenFit ? undefined : { width: displayWidth || undefined, height: displayHeight || undefined, maxWidth: "none", maxHeight: "none" }}
-            onLoad={(event) => setNaturalSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })}
+            style={isFullscreenFit ? undefined : { width: displayWidth || undefined, height: displayHeight || undefined, maxWidth: currentNaturalSize ? "none" : "100%", maxHeight: currentNaturalSize ? "none" : "100%" }}
+            onLoad={(event) => setNaturalSize({ url: imageUrl, width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })}
             onError={() => markImageFailed(imageUrl)}
             draggable={false}
           />

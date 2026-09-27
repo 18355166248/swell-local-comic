@@ -75,6 +75,7 @@ export default function ComicViewer() {
 
   useKeyboardShortcuts({
     viewMode: state.viewMode,
+    disableZoom: state.viewMode === "page" && isFullscreen && fullscreenImageFit === "fit",
     onNextPage: actions.nextPage,
     onPrevPage: actions.prevPage,
     onZoomIn: actions.zoomIn,

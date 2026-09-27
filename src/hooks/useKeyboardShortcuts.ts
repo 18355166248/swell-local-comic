@@ -3,6 +3,7 @@ import type { ViewMode } from "../types";
 
 interface UseKeyboardShortcutsOptions {
   viewMode: ViewMode;
+  disableZoom?: boolean;
   onNextPage: () => void;
   onPrevPage: () => void;
   onZoomIn: () => void;
@@ -23,6 +24,7 @@ interface UseKeyboardShortcutsOptions {
  */
 export function useKeyboardShortcuts({
   viewMode,
+  disableZoom = false,
   onNextPage,
   onPrevPage,
   onZoomIn,
@@ -106,19 +108,19 @@ export function useKeyboardShortcuts({
         case "+":
         case "=":
           e.preventDefault();
-          onZoomIn();
+          if (!disableZoom) onZoomIn();
           break;
         case "-":
           e.preventDefault();
-          onZoomOut();
+          if (!disableZoom) onZoomOut();
           break;
         case "0":
           e.preventDefault();
-          onResetZoom();
+          if (!disableZoom) onResetZoom();
           break;
       }
     },
-    [viewMode, onNextPage, onPrevPage, onZoomIn, onZoomOut, onResetZoom, onToggleFullscreen, onToggleViewMode, onGoToFirst, onGoToLast, onScrollUp, onScrollDown, onScrollStart, onScrollEnd],
+    [viewMode, disableZoom, onNextPage, onPrevPage, onZoomIn, onZoomOut, onResetZoom, onToggleFullscreen, onToggleViewMode, onGoToFirst, onGoToLast, onScrollUp, onScrollDown, onScrollStart, onScrollEnd],
   );
 
   useEffect(() => {
