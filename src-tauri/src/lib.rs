@@ -212,27 +212,16 @@ async fn scan_comic_library(root_path: String) -> Result<ComicLibraryScanResult,
   .map_err(|error| format!("Failed to join scan task: {}", error))?
 }
 
-#[command]
-async fn get_next_sibling_folder(folder_path: String) -> Result<Option<FolderInfo>, String> {
-  let path = Path::new(&folder_path);
-  if !path.exists() || !path.is_dir() {
-    return Err("文件夹不存在或不是目录".to_string());
-  }
-
+/// 读取目录的同级子目录（含自身所在层级），按名称自然排序
+fn sorted_sibling_dirs(path: &Path) -> Result<Vec<(String, String)>, String> {
   let parent = match path.parent() {
     Some(p) => p,
-    None => return Ok(None),
+    None => return Ok(Vec::new()),
   };
 
   if !parent.exists() || !parent.is_dir() {
-    return Ok(None);
+    return Ok(Vec::new());
   }
-
-  let current_name = path
-    .file_name()
-    .and_then(|n| n.to_str())
-    .unwrap_or("")
-    .to_string();
 
   let mut sibling_dirs: Vec<(String, String)> = Vec::new();
   let entries = fs::read_dir(parent).map_err(|e| format!("读取父目录失败: {}", e))?;
@@ -252,20 +241,44 @@ async fn get_next_sibling_folder(folder_path: String) -> Result<Option<FolderInf
   // 使用自然排序，使 1、2、10 按数字顺序排列，而非字典序
   sibling_dirs.sort_by(|a, b| natord::compare(&a.0, &b.0));
 
-  let mut found_current = false;
-  for (name, full_path) in sibling_dirs {
-    if found_current {
-      return Ok(Some(FolderInfo {
-        name,
-        path: full_path,
-      }));
-    }
-    if name == current_name {
-      found_current = true;
-    }
+  Ok(sibling_dirs)
+}
+
+fn sibling_folder_at(folder_path: &str, forward: bool) -> Result<Option<FolderInfo>, String> {
+  let path = Path::new(folder_path);
+  if !path.exists() || !path.is_dir() {
+    return Err("文件夹不存在或不是目录".to_string());
   }
 
-  Ok(None)
+  let current_name = path
+    .file_name()
+    .and_then(|n| n.to_str())
+    .unwrap_or("")
+    .to_string();
+
+  let sibling_dirs = sorted_sibling_dirs(path)?;
+  let current_index = sibling_dirs.iter().position(|(name, _)| *name == current_name);
+
+  let target = match current_index {
+    Some(index) if forward => sibling_dirs.get(index + 1),
+    Some(index) if index > 0 => sibling_dirs.get(index - 1),
+    _ => None,
+  };
+
+  Ok(target.map(|(name, full_path)| FolderInfo {
+    name: name.to_string(),
+    path: full_path.to_string(),
+  }))
+}
+
+#[command]
+async fn get_next_sibling_folder(folder_path: String) -> Result<Option<FolderInfo>, String> {
+  sibling_folder_at(&folder_path, true)
+}
+
+#[command]
+async fn get_previous_sibling_folder(folder_path: String) -> Result<Option<FolderInfo>, String> {
+  sibling_folder_at(&folder_path, false)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -278,6 +291,7 @@ pub fn run() {
       read_image_files,
       read_image_file,
       get_next_sibling_folder,
+      get_previous_sibling_folder,
       scan_comic_library
     ])
     .setup(|app| {

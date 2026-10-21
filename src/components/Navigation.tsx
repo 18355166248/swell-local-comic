@@ -41,9 +41,8 @@ export default function Navigation({
     <div className="w-20 bg-gray-800/95 border-l border-gray-700 flex flex-col items-center py-4 gap-4">
       <button
         onClick={onPrevPage}
-        disabled={currentIndex === 0}
         className="w-12 h-10 flex items-center justify-center rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-700 transition-colors"
-        title="上一页 (← A)"
+        title="上一页，第一页时打开上一章最后一张 (← A)"
       >
         <ChevronLeftIcon size={20} className="text-gray-300" />
       </button>

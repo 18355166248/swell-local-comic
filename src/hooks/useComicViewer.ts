@@ -3,6 +3,7 @@ import type {
   ChapterSequenceItem,
   ComicFile,
   ComicViewerState,
+  FolderInfo,
   ViewMode,
   ReadingHistory,
 } from "../types";
@@ -15,6 +16,7 @@ import {
   revokeImageUrls,
   sortFiles,
   getNextSiblingFolder,
+  getPreviousSiblingFolder,
 } from "../utils/fileUtils";
 import { saveHistory } from "../utils/historyUtils";
 import { normalizeLibraryPathId } from "../utils/libraryUtils";
@@ -37,7 +39,9 @@ export const useComicViewer = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadingProgress, setLoadingProgress] = useState<number>(0);
   const isLoadingNextFolderRef = useRef(false);
+  const isLoadingPrevFolderRef = useRef(false);
   const hasNoMoreFoldersRef = useRef(false);
+  const hasNoPreviousFoldersRef = useRef(false);
   const isLoadingRef = useRef(false);
   const currentImageUrlsRef = useRef<string[]>([]);
   const currentImageUrlRef = useRef<string>("");
@@ -179,7 +183,9 @@ export const useComicViewer = () => {
       if (firstUrl) preloadCacheRef.current.set(fileList[correctIndex].path, firstUrl);
       setImageUrl(firstUrl);
       isLoadingNextFolderRef.current = false;
+      isLoadingPrevFolderRef.current = false;
       hasNoMoreFoldersRef.current = false;
+      hasNoPreviousFoldersRef.current = false;
 
       if (targetMode === "scroll") {
         const scrollLoadId = ++scrollLoadRequestRef.current;
@@ -258,6 +264,7 @@ export const useComicViewer = () => {
         (!isScrollMode && !isPageMode) ||
         (!fromEmptyFolder && isLoadingRef.current) ||
         isLoadingNextFolderRef.current ||
+        isLoadingPrevFolderRef.current ||
         hasNoMoreFoldersRef.current
       ) {
         return;
@@ -348,6 +355,7 @@ export const useComicViewer = () => {
         setFolderPath(nextFolder.path);
         sessionStorage.setItem("currentFolderPath", nextFolder.path);
         setFiles(sortedNewFiles);
+        hasNoPreviousFoldersRef.current = false;
 
         if (isPageMode) {
           currentImageUrlRef.current = firstUrl;
@@ -372,6 +380,125 @@ export const useComicViewer = () => {
       } finally {
         if (requestId === folderRequestRef.current) setIsLoading(false);
         if (requestId === folderRequestRef.current) isLoadingNextFolderRef.current = false;
+      }
+    },
+    [viewMode, revokePageImageUrls, getOrLoadImageFile]
+  );
+
+  /**
+   * 分页模式下加载同级上一文件夹：定位到该文件夹的最后一张图片，
+   * 使「翻到章节第一张后继续上一页」可以跨章节衔接阅读。
+   */
+  const loadPreviousFolder = useCallback(
+    async () => {
+      if (
+        viewMode !== "page" ||
+        isLoadingRef.current ||
+        isLoadingNextFolderRef.current ||
+        isLoadingPrevFolderRef.current ||
+        hasNoPreviousFoldersRef.current
+      ) {
+        return;
+      }
+
+      const currentFolderPath = sessionStorage.getItem("currentFolderPath");
+      if (!currentFolderPath) return;
+
+      let prevFolder: FolderInfo | null = null;
+      let sequence: ChapterSequenceItem[] | null = null;
+      const chapterSequence = sessionStorage.getItem("comicChapterSequence");
+
+      if (chapterSequence) {
+        try {
+          sequence = JSON.parse(chapterSequence) as ChapterSequenceItem[];
+          const currentSequenceIndex = sequence.findIndex(
+            (item) =>
+              normalizeLibraryPathId(item.path) ===
+              normalizeLibraryPathId(currentFolderPath)
+          );
+          if (currentSequenceIndex > 0) {
+            prevFolder = sequence[currentSequenceIndex - 1];
+          } else if (currentSequenceIndex === 0) {
+            hasNoPreviousFoldersRef.current = true;
+            return;
+          }
+        } catch (error) {
+          console.error("解析章节序列失败:", error);
+          sessionStorage.removeItem("comicChapterSequence");
+          sequence = null;
+        }
+      }
+
+      if (!prevFolder) {
+        prevFolder = await getPreviousSiblingFolder(currentFolderPath);
+      }
+      if (!prevFolder) {
+        hasNoPreviousFoldersRef.current = true;
+        return;
+      }
+
+      isLoadingPrevFolderRef.current = true;
+      const requestId = ++folderRequestRef.current;
+      setIsLoading(true);
+      setLoadingProgress(0);
+      setError(null);
+
+      try {
+        let newFiles: ComicFile[] = [];
+        while (prevFolder && newFiles.length === 0) {
+          newFiles = await scanImageFiles(prevFolder.path);
+          if (newFiles.length > 0) break;
+          if (sequence) {
+            const index = sequence.findIndex(
+              (item) =>
+                normalizeLibraryPathId(item.path) ===
+                normalizeLibraryPathId(prevFolder!.path)
+            );
+            prevFolder = index > 0 ? sequence[index - 1] : null;
+          } else {
+            prevFolder = await getPreviousSiblingFolder(prevFolder.path);
+          }
+        }
+        if (!prevFolder) {
+          hasNoPreviousFoldersRef.current = true;
+          throw new Error("前面没有可阅读的章节");
+        }
+        if (requestId !== folderRequestRef.current) return;
+
+        const sortedNewFiles = sortFiles(newFiles);
+        const lastIndex = sortedNewFiles.length - 1;
+        const lastUrl = await getOrLoadImageFile(sortedNewFiles[lastIndex]);
+        if (requestId !== folderRequestRef.current) {
+          if (lastUrl) URL.revokeObjectURL(lastUrl);
+          return;
+        }
+
+        pageRequestRef.current++;
+        revokeImageUrls(currentImageUrlsRef.current);
+        currentImageUrlsRef.current = [];
+        revokePageImageUrls(lastUrl);
+        setImageUrls([]);
+        setCurrentIndex(lastIndex);
+        setScrollPosition(0);
+        setScrollHeight(0);
+        setScrollTargetIndex(null);
+        setFolderName(prevFolder.name);
+        setFolderPath(prevFolder.path);
+        sessionStorage.setItem("currentFolderPath", prevFolder.path);
+        setFiles(sortedNewFiles);
+        currentImageUrlRef.current = lastUrl;
+        preloadCacheRef.current.set(sortedNewFiles[lastIndex].path, lastUrl);
+        setImageUrl(lastUrl);
+        setLoadingProgress(100);
+        hasNoMoreFoldersRef.current = false;
+      } catch (error) {
+        console.error("加载上一文件夹失败:", error);
+        if (requestId === folderRequestRef.current) {
+          setError(error instanceof Error ? error.message : "无法加载上一章节");
+        }
+      } finally {
+        if (requestId === folderRequestRef.current) setIsLoading(false);
+        if (requestId === folderRequestRef.current) isLoadingPrevFolderRef.current = false;
       }
     },
     [viewMode, revokePageImageUrls, getOrLoadImageFile]
@@ -434,8 +561,11 @@ export const useComicViewer = () => {
       setCurrentIndex(newIndex);
       await loadImage(files[newIndex]);
       preloadAdjacent(newIndex);
+    } else if (viewMode === "page" && currentIndex === 0 && files.length > 0) {
+      // 章节第一页继续上一页：加载上一章节并定位到其最后一张
+      await loadPreviousFolder();
     }
-  }, [currentIndex, files, loadImage, preloadAdjacent]);
+  }, [currentIndex, files, loadImage, viewMode, loadPreviousFolder, preloadAdjacent]);
 
   const zoomIn = useCallback(() => {
     setZoom((prev) => Math.min(prev * 1.2, 3));

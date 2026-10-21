@@ -1,5 +1,15 @@
 # React + TypeScript + Vite
 
+## Desktop development
+
+Run `pnpm tauri` without starting `pnpm dev` separately. Tauri starts Vite on port 1420.
+
+The development config stores WebView2 data and logs in `.tauri-dev-data/` at the
+project root. Its path is relative to `src-tauri/target/debug/app.exe`. This avoids
+the inaccessible application data directory on this machine. Development starts
+with a separate library/history; existing installed-app data is preserved.
+Release builds continue to use the default application data directory.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

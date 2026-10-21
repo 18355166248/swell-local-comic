@@ -12,6 +12,8 @@ dist
 dist-ssr
 *.local
 release
+.tauri-dev-data/
+.webview-diagnostic/
 
 # Editor directories and files
 .vscode/*

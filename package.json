@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "tauri": "tauri dev",
+    "tauri": "tauri dev --config src-tauri/tauri.dev.conf.json",
     "tauri:build": "pnpm generate-icon && tauri build && node scripts/copy-release.js",
     "tauri:build:offline": "pnpm generate-icon && cross-env TAURI_OFFLINE=1 tauri build && node scripts/copy-release.js",
     "clean:icon-cache": "powershell -ExecutionPolicy Bypass -File scripts/clean-icon-cache.ps1",
@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.18",
-    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/api": "^2.12.4",
     "ahooks": "^3.9.6",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -28,7 +28,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
-    "@tauri-apps/cli": "^2.9.6",
+    "@tauri-apps/cli": "^2.12.4",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",

@@ -37,6 +37,24 @@ export const getNextSiblingFolder = async (
 };
 
 /**
+ * 获取当前文件夹同级的上一个文件夹（按名称排序）
+ * 用于分页模式在章节第一页时翻到上一章的最后一张
+ */
+export const getPreviousSiblingFolder = async (
+  folderPath: string
+): Promise<FolderInfo | null> => {
+  try {
+    const result = await invoke<FolderInfo | null>("get_previous_sibling_folder", {
+      folderPath,
+    });
+    return result;
+  } catch (error) {
+    console.error("获取上一同级文件夹失败:", error);
+    return null;
+  }
+};
+
+/**
  * 自然排序比较函数，处理文件名中的数字
  * 例如：6-1 会排在 10-1 前面
  */
