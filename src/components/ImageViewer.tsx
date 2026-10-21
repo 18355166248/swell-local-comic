@@ -64,6 +64,7 @@ export default function ImageViewer({
   onFullscreenImageFitChange,
 }: ImageViewerProps) {
   const pageContainerRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const [naturalSize, setNaturalSize] = useState({ url: "", width: 0, height: 0 });
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
@@ -75,8 +76,9 @@ export default function ImageViewer({
   const AT_BOTTOM_THRESHOLD = 5;
 
   useEffect(() => {
-    if (viewMode !== "page" || !pageContainerRef.current) return;
-    const container = pageContainerRef.current;
+    // 测量不滚动的外层容器：放大后滚动条出现不会反过来压缩基准尺寸，缩放倍率才稳定
+    if (viewMode !== "page" || !viewportRef.current) return;
+    const container = viewportRef.current;
     const updateSize = () => setViewportSize({ width: container.clientWidth, height: container.clientHeight });
     updateSize();
     const observer = new ResizeObserver(updateSize);
@@ -309,15 +311,39 @@ export default function ImageViewer({
   const isFullscreenFit =
     isFullscreen && fullscreenImageFit === "fit";
   const currentNaturalSize = naturalSize.url === imageUrl ? naturalSize : null;
-  const fitScale = currentNaturalSize && viewportSize.width && viewportSize.height
-    ? isFullscreen ? 1 : Math.min(1, viewportSize.width / currentNaturalSize.width, viewportSize.height / currentNaturalSize.height)
-    : 1;
-  const displayWidth = (currentNaturalSize?.width ?? 0) * fitScale * zoom;
-  const displayHeight = (currentNaturalSize?.height ?? 0) * fitScale * zoom;
+  // 非全屏分页模式：按预览区整体适配（小图放大、大图缩小），zoom 只在这个适配比例上再乘倍率
+  const fitScale =
+    currentNaturalSize &&
+    !isFullscreen &&
+    viewportSize.width > 0 &&
+    viewportSize.height > 0
+      ? Math.min(
+          viewportSize.width / currentNaturalSize.width,
+          viewportSize.height / currentNaturalSize.height,
+        )
+      : 1;
+  const scale = fitScale * zoom;
+  // 只对受预览区限制的那条边取整，另一条边按原图比例推导：不变形、完整可见、也不会多出滚动条
+  let displayWidth = 0;
+  let displayHeight = 0;
+  if (currentNaturalSize) {
+    const widthLimited =
+      viewportSize.width <= 0 ||
+      viewportSize.height <= 0 ||
+      viewportSize.width / currentNaturalSize.width <=
+        viewportSize.height / currentNaturalSize.height;
+    if (widthLimited) {
+      displayWidth = Math.max(1, Math.floor(currentNaturalSize.width * scale));
+      displayHeight = (displayWidth * currentNaturalSize.height) / currentNaturalSize.width;
+    } else {
+      displayHeight = Math.max(1, Math.floor(currentNaturalSize.height * scale));
+      displayWidth = (displayHeight * currentNaturalSize.width) / currentNaturalSize.height;
+    }
+  }
   const canPanPage = !isFullscreenFit && (displayWidth > viewportSize.width || displayHeight > viewportSize.height);
 
   return (
-    <div className="h-full relative">
+    <div ref={viewportRef} className="h-full relative">
       <div
         ref={pageContainerRef}
         className={`h-full w-full ${isFullscreenFit ? "overflow-hidden" : "overflow-auto"} ${canPanPage ? "cursor-grab active:cursor-grabbing" : ""}`}
