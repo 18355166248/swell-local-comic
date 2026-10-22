@@ -15,6 +15,7 @@
     "generate-icon": "tauri icon swell-local-comic-icon.png -o src-tauri/icons && node scripts/sync-tauri-icon-sizes.js",
     "clean": "node scripts/clean-cache.js",
     "test:library": "node --test scripts/library-utils.test.mjs",
+    "test:reader": "node --test scripts/reader-utils.test.mjs",
     "clean:build": "node scripts/clean-cache.js && pnpm generate-icon && pnpm exec tauri build && node scripts/copy-release.js"
   },
   "dependencies": {

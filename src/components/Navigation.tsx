@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ComicFile } from "../types";
 import { ChevronLeftIcon, ChevronRightIcon, NextChapterIcon } from "./Icons";
+import { parsePageNumber } from "../utils/readerUtils";
 
 interface NavigationProps {
   files: ComicFile[];
@@ -24,9 +25,9 @@ export default function Navigation({
   if (files.length === 0) return null;
 
   const handleJump = () => {
-    const page = Number(jumpValue);
-    if (page >= 1 && page <= files.length) {
-      onGoToPage(page - 1);
+    const page = parsePageNumber(jumpValue, files.length);
+    if (page !== null) {
+      onGoToPage(page);
       setJumpValue("");
     }
   };
@@ -53,6 +54,7 @@ export default function Navigation({
         </div>
         <input
           type="number"
+          aria-label="跳转页码"
           min={1}
           max={files.length}
           value={jumpValue}
@@ -74,6 +76,8 @@ export default function Navigation({
               <button
                 key={actualIndex}
                 onClick={() => onGoToPage(actualIndex)}
+                aria-label={`跳到第 ${actualIndex + 1} 页`}
+                aria-current={actualIndex === currentIndex ? "page" : undefined}
                 className={`w-10 h-8 text-sm rounded transition-colors ${
                   actualIndex === currentIndex
                     ? "bg-blue-600 text-white font-medium"

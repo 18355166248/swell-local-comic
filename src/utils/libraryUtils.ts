@@ -1,11 +1,85 @@
 import type {
   ComicChapter,
+  ComicDirectoryNode,
   LibraryItem,
   ReadingHistory,
   ReadingHistoryInput,
 } from "../types";
 
 export type ChapterStatus = "unread" | "reading" | "read";
+
+export interface DirectoryProgress {
+  total: number;
+  read: number;
+  reading: number;
+}
+
+// Build once per scan/history update, rather than searching history at every tree node.
+export const buildLibraryPreviewIndex = (
+  tree: ComicDirectoryNode,
+  histories: ReadingHistory[],
+) => {
+  const historyByPath = new Map<string, ReadingHistory>();
+  for (const history of histories) {
+    const key = normalizeLibraryPathId(history.folderPath);
+    const previous = historyByPath.get(key);
+    if (!previous || previous.lastReadTime < history.lastReadTime) {
+      historyByPath.set(key, history);
+    }
+  }
+  const progressByPath = new Map<string, DirectoryProgress>();
+  const visit = (node: ComicDirectoryNode): DirectoryProgress => {
+    const status = getChapterStatus(historyByPath.get(normalizeLibraryPathId(node.path)));
+    const progress: DirectoryProgress = {
+      total: Number(node.readable),
+      read: Number(node.readable && status === "read"),
+      reading: Number(node.readable && status === "reading"),
+    };
+    for (const child of node.children) {
+      const childProgress = visit(child);
+      progress.total += childProgress.total;
+      progress.read += childProgress.read;
+      progress.reading += childProgress.reading;
+    }
+    progressByPath.set(node.path, progress);
+    return progress;
+  };
+  const totals = visit(tree);
+  return { historyByPath, progressByPath, totals };
+};
+
+export const filterLibraryChapters = (
+  chapters: ComicChapter[],
+  historyByPath: Map<string, ReadingHistory>,
+  query: string,
+  status: ChapterStatus | "all",
+): ComicChapter[] => {
+  const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  return chapters.filter((chapter) => {
+    if (status !== "all" && getChapterStatus(historyByPath.get(normalizeLibraryPathId(chapter.path))) !== status) {
+      return false;
+    }
+    const text = `${chapter.name} ${chapter.relativePath}`.toLocaleLowerCase();
+    return terms.every((term) => text.includes(term));
+  });
+};
+
+export const getSuggestedChapter = (
+  chapters: ComicChapter[],
+  historyByPath: Map<string, ReadingHistory>,
+): ComicChapter | undefined => {
+  // Prefer the most recently unfinished chapter, then the first unread chapter.
+  let recent: ComicChapter | undefined;
+  let recentTime = -Infinity;
+  for (const chapter of chapters) {
+    const history = historyByPath.get(normalizeLibraryPathId(chapter.path));
+    if (getChapterStatus(history) === "reading" && history && history.lastReadTime > recentTime) {
+      recent = chapter;
+      recentTime = history.lastReadTime;
+    }
+  }
+  return recent ?? chapters.find((chapter) => !historyByPath.has(normalizeLibraryPathId(chapter.path)));
+};
 
 export const normalizeLibraryPathId = (path: string): string =>
   path.replace(/\\/g, "/").replace(/\/+$/g, "").toLowerCase();

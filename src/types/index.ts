@@ -19,9 +19,11 @@ export interface ComicViewerState {
   scrollHeight?: number;
   scrollRatio: number;
   isLoading?: boolean;
+  isImageLoading?: boolean;
   loadingProgress?: number; // 加载进度 0-100
   error?: string | null;
   scrollTargetIndex?: number | null;
+  scrollJumpRequest?: number;
 }
 
 export interface ReadingHistory {

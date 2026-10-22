@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { DEFAULT_SCROLL_RATIO } from "../utils/fileUtils";
 import type { ViewMode } from "../types";
 import { useImageGroups } from "../hooks/useImageGroups";
@@ -13,7 +13,7 @@ interface ImageViewerProps {
   imageUrl: string;
   currentFileName?: string;
   zoom: number;
-  onWheel: (e: React.WheelEvent) => void;
+  onWheel: (e: WheelEvent) => void;
   viewMode: ViewMode;
   imageWidth: number;
   imageUrls: string[];
@@ -25,6 +25,7 @@ interface ImageViewerProps {
   onCurrentImageChange?: (index: number) => void; // 当前可见图片索引变化回调
   onRetryImage?: (index: number) => void;
   isLoading?: boolean; // 是否正在加载
+  isImageLoading?: boolean;
   imagesPerGroup?: number; // 每组图片数量，默认1（每张图片单独显示），可以配置成5（每5张合成一张）
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
@@ -32,6 +33,7 @@ interface ImageViewerProps {
   totalFiles?: number;
   scrollPositionRatio?: number; // 滚动模式下的滚动进度 0-1
   scrollTargetIndex?: number | null;
+  scrollJumpRequest?: number;
   fullscreenImageFit?: "original" | "fit"; // 全屏时图片显示：原图大小 / 适应屏幕
   onFullscreenImageFitChange?: (mode: "original" | "fit") => void;
 }
@@ -53,6 +55,7 @@ export default function ImageViewer({
   onCurrentImageChange,
   onRetryImage,
   isLoading = false,
+  isImageLoading = false,
   imagesPerGroup = 1,
   isFullscreen = false,
   onToggleFullscreen,
@@ -60,6 +63,7 @@ export default function ImageViewer({
   totalFiles = 0,
   scrollPositionRatio,
   scrollTargetIndex = null,
+  scrollJumpRequest = 0,
   fullscreenImageFit = "original",
   onFullscreenImageFitChange,
 }: ImageViewerProps) {
@@ -74,6 +78,25 @@ export default function ImageViewer({
   }, []);
   /** 判定「已到底部」的阈值：距离底部小于等于此像素视为到底 */
   const AT_BOTTOM_THRESHOLD = 5;
+
+  useEffect(() => {
+    const container = viewMode === "scroll" ? scrollContainerRef.current : pageContainerRef.current;
+    if (!container) return;
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      if (!isLoading && !(isFullscreen && fullscreenImageFit === "fit" && viewMode === "page")) onWheel(event);
+    };
+    container.addEventListener("wheel", handleWheel, { passive: false });
+    return () => container.removeEventListener("wheel", handleWheel);
+  }, [viewMode, imageUrl, onWheel, isLoading, isFullscreen, fullscreenImageFit, scrollContainerRef]);
+
+  useLayoutEffect(() => {
+    if (viewMode === "page") {
+      pageContainerRef.current?.scrollTo({ top: 0, left: 0 });
+      dragRef.current = null;
+    }
+  }, [imageUrl, viewMode]);
 
   useEffect(() => {
     // 测量不滚动的外层容器：放大后滚动条出现不会反过来压缩基准尺寸，缩放倍率才稳定
@@ -127,7 +150,7 @@ export default function ImageViewer({
       return;
     }
     if (scrollTargetIndex === null || isLoading || imageUrls.length !== files.length) return;
-    const key = `${files[0]?.path}:${scrollTargetIndex}:${imagesPerGroup}`;
+    const key = `${files[0]?.path}:${scrollTargetIndex}:${imagesPerGroup}:${scrollJumpRequest}`;
     if (lastJumpRef.current === key) return;
     const container = scrollContainerRef.current;
     if (!container) return;
@@ -144,7 +167,7 @@ export default function ImageViewer({
       cancelAnimationFrame(frame);
       window.clearTimeout(timer);
     };
-  }, [viewMode, scrollTargetIndex, isLoading, imageUrls.length, files, imagesPerGroup, scrollContainerRef]);
+  }, [viewMode, scrollTargetIndex, scrollJumpRequest, isLoading, imageUrls.length, files, imagesPerGroup, scrollContainerRef]);
 
   // 向下滚动：若已在底部则加载下一文件夹，否则执行滚动（需用户主动点击/S键触发）
   const handleScrollDownClick = useCallback(() => {
@@ -166,7 +189,11 @@ export default function ImageViewer({
     }
   }, [handleScrollDown, onLoadNextFolder, isLoading, scrollContainerRef]);
 
-  if ((!imageUrl || failedUrls.has(imageUrl)) && imageUrls.length === 0 && files.length > 0 && !isLoading) {
+  if (viewMode === "page" && isImageLoading && !imageUrl) {
+    return <div role="status" className="flex h-full items-center justify-center text-sm text-gray-400">正在加载第 {currentIndex + 1} 页…</div>;
+  }
+
+  if ((!imageUrl || failedUrls.has(imageUrl)) && imageUrls.length === 0 && files.length > 0 && !isLoading && !isImageLoading) {
     return (
       <div className="flex h-full items-center justify-center text-gray-200">
         <button type="button" onClick={() => onRetryImage?.(currentIndex)} className="rounded-xl border border-white/10 bg-gray-800 px-6 py-4 hover:bg-gray-700">
@@ -205,8 +232,10 @@ export default function ImageViewer({
         )}
         <div
           ref={scrollContainerRef}
+          role="region"
+          aria-label="滚动阅读区域"
+          tabIndex={0}
           className="h-full overflow-y-auto overflow-x-hidden scroll-mode-container"
-          onWheel={isLoading ? undefined : onWheel}
           style={{
             pointerEvents: isLoading ? "none" : "auto",
             opacity: isLoading ? 0.5 : 1,
@@ -246,6 +275,7 @@ export default function ImageViewer({
                       src={url}
                       alt={group.files[imgIndex]?.name || `图片 ${fileIndex + 1}`}
                       className="select-none"
+                      decoding="async"
                       onError={() => markImageFailed(url)}
                       style={{
                         width: `${100 / group.urls.length}%`,
@@ -290,7 +320,7 @@ export default function ImageViewer({
           )}
         </div>
         )}
-        {/* 全屏模式：左上角进度、适应屏幕按钮，失去焦点时隐藏退出按钮 */}
+        {/* 全屏模式：进度、适配方式和可键盘访问的退出按钮 */}
         {isFullscreen && onToggleFullscreen && totalFiles > 0 && (
           <FullscreenOverlay
             progressText={
@@ -346,11 +376,10 @@ export default function ImageViewer({
     <div ref={viewportRef} className="h-full relative">
       <div
         ref={pageContainerRef}
+        role="region"
+        aria-label="分页阅读区域"
+        tabIndex={0}
         className={`h-full w-full ${isFullscreenFit ? "overflow-hidden" : "overflow-auto"} ${canPanPage ? "cursor-grab active:cursor-grabbing" : ""}`}
-        onWheel={(event) => {
-          if (isFullscreenFit) event.preventDefault();
-          else onWheel(event);
-        }}
         onPointerDown={(event) => {
           const container = pageContainerRef.current;
           if (!container || !canPanPage || event.button !== 0) return;
@@ -376,6 +405,7 @@ export default function ImageViewer({
             onLoad={(event) => setNaturalSize({ url: imageUrl, width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })}
             onError={() => markImageFailed(imageUrl)}
             draggable={false}
+            decoding="async"
           />
         </div>
       </div>
@@ -392,7 +422,7 @@ export default function ImageViewer({
           </svg>
         </button>
       )}
-      {/* 全屏模式：左上角进度、适应屏幕按钮，失去焦点时隐藏退出按钮 */}
+      {/* 全屏模式：进度、适配方式和可键盘访问的退出按钮 */}
       {isFullscreen && onToggleFullscreen && totalFiles > 0 && (
         <FullscreenOverlay
           progressText={`${currentIndex + 1} / ${totalFiles}`}

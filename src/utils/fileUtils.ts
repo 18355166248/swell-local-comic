@@ -190,6 +190,29 @@ export const loadImageFile = async (file: ComicFile): Promise<string> => {
   }
 };
 
+/** A small preview owns its URL; original image bytes are released after resizing. */
+export async function loadImageThumbnail(file: ComicFile): Promise<string> {
+  const sourceUrl = await loadImageFile(file);
+  try {
+    const image = new Image();
+    image.src = sourceUrl;
+    await image.decode();
+    const scale = Math.min(160 / image.naturalWidth, 210 / image.naturalHeight, 1);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("无法生成缩略图");
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((value) => value ? resolve(value) : reject(new Error("缩略图生成失败")), "image/webp", 0.75);
+    });
+    return URL.createObjectURL(blob);
+  } finally {
+    URL.revokeObjectURL(sourceUrl);
+  }
+}
+
 /** 批量加载图片 URL，每批 10 张，通过 onProgress 回调报告进度 */
 export async function loadImagesInBatches(
   files: ComicFile[],

@@ -34,6 +34,8 @@ export const useComicViewer = () => {
   const [scrollPosition, setScrollPosition] = useState<number>(0);
   const [scrollHeight, setScrollHeight] = useState<number>(0);
   const [scrollTargetIndex, setScrollTargetIndex] = useState<number | null>(null);
+  const [scrollJumpRequest, setScrollJumpRequest] = useState(0);
+  const [isImageLoading, setIsImageLoading] = useState(false);
   const scrollLoadRequestRef = useRef(0);
   const [scrollRatio, setScrollRatio] = useState<number>(DEFAULT_SCROLL_RATIO);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -163,6 +165,7 @@ export const useComicViewer = () => {
       }
 
       pageRequestRef.current++;
+      setIsImageLoading(false);
       revokeImageUrls(currentImageUrlsRef.current);
       currentImageUrlsRef.current = [];
       revokePageImageUrls(firstUrl);
@@ -228,6 +231,7 @@ export const useComicViewer = () => {
       }
 
       setImageUrl("");
+      setIsImageLoading(true);
       const url = await getOrLoadImageFile(file);
       if (requestId !== pageRequestRef.current) {
         if (file.path !== pageRequestedPathRef.current && ![...preloadCacheRef.current.values()].includes(url)) {
@@ -252,6 +256,8 @@ export const useComicViewer = () => {
         setImageUrl("");
         setError("当前图片加载失败，可以点击画面重试或翻到下一页");
       }
+    } finally {
+      if (requestId === pageRequestRef.current) setIsImageLoading(false);
     }
   }, [getOrLoadImageFile]);
 
@@ -620,29 +626,14 @@ export const useComicViewer = () => {
 
   // 鼠标滚轮处理
   const handleWheel = useCallback(
-    (e: React.WheelEvent) => {
-      // 在滚动模式下，如果按住Ctrl键，则缩放；否则滚动
-      if (viewMode === "scroll") {
-        if (e.ctrlKey || e.metaKey) {
-          e.preventDefault();
-          if (e.deltaY < 0) {
-            zoomIn();
-          } else {
-            zoomOut();
-          }
-        }
-        // 否则允许正常滚动
-      } else {
-        // 分页模式下，滚轮用于缩放
-        e.preventDefault();
-        if (e.deltaY < 0) {
-          zoomIn();
-        } else {
-          zoomOut();
-        }
-      }
+    (e: WheelEvent) => {
+      // Normal wheel scrolls in both modes. Ctrl/pinch zooms only the image.
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      if (e.deltaY < 0) zoomIn();
+      else if (e.deltaY > 0) zoomOut();
     },
-    [viewMode, zoomIn, zoomOut],
+    [zoomIn, zoomOut],
   );
 
   // 保存阅读历史记录
@@ -683,12 +674,17 @@ export const useComicViewer = () => {
 
   const goToPage = useCallback(
     (index: number) => {
-      if (index >= 0 && index < files.length) {
+      if (Number.isInteger(index) && index >= 0 && index < files.length) {
         setCurrentIndex(index);
-        void loadImage(files[index]).then(() => preloadAdjacent(index));
+        if (viewMode === "scroll") {
+          setScrollTargetIndex(index);
+          setScrollJumpRequest((request) => request + 1);
+        } else {
+          void loadImage(files[index]).then(() => preloadAdjacent(index));
+        }
       }
     },
-    [files, loadImage, preloadAdjacent],
+    [files, viewMode, loadImage, preloadAdjacent],
   );
 
   const onScrollPositionChange = useCallback(
@@ -777,14 +773,16 @@ export const useComicViewer = () => {
     scrollPosition,
     scrollHeight,
     scrollTargetIndex,
+    scrollJumpRequest,
     scrollRatio,
     isLoading,
+    isImageLoading,
     loadingProgress,
     error,
   }), [
     files, currentIndex, zoom, imageUrl, viewMode, imageWidth, imageUrls,
-    folderName, folderPath, scrollPosition, scrollHeight, scrollTargetIndex, scrollRatio,
-    isLoading, loadingProgress, error,
+    folderName, folderPath, scrollPosition, scrollHeight, scrollTargetIndex, scrollJumpRequest, scrollRatio,
+    isLoading, isImageLoading, loadingProgress, error,
   ]);
 
   return { state, actions };

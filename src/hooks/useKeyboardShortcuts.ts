@@ -42,6 +42,7 @@ export function useKeyboardShortcuts({
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
+      if (e.ctrlKey || e.metaKey || e.altKey || document.querySelector("dialog[open]")) return;
       if (
         target.tagName === "INPUT" ||
         target.tagName === "TEXTAREA" ||

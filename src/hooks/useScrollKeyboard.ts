@@ -48,6 +48,7 @@ export function useScrollKeyboard({
     }
 
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || document.querySelector("dialog[open]")) return;
       const target = e.target as HTMLElement;
       if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable || target.closest("button, a, select, [role='button']")) {
         return;

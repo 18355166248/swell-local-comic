@@ -142,3 +142,49 @@ test("getLibraryBreadcrumb formats a clear library detail trail", () => {
     { label: "復仇母女丼" },
   ]);
 });
+
+const previewChapters = [1, 2, 3].map((n) => ({
+  name: `第${n}话`, path: `G:/comic/volume/${n}`, relativePath: `第一卷/第${n}话`, imageCount: 10,
+}));
+const previewHistory = (n, currentIndex, lastReadTime) => ({
+  folderName: `第${n}话`, folderPath: `g:\\COMIC\\volume\\${n}\\`, files: [], totalFiles: 10, currentIndex, lastReadTime,
+});
+const previewTree = {
+  name: "comic", path: "G:/comic", imageCount: 0, readable: false,
+  children: [{
+    name: "volume", path: "G:/comic/volume", imageCount: 0, readable: false,
+    children: previewChapters.map((chapter) => ({ ...chapter, readable: true, children: [] })),
+  }],
+};
+
+test("preview index aggregates nested chapters and chooses latest normalized history", () => {
+  const index = libraryUtils.buildLibraryPreviewIndex(previewTree, [
+    previewHistory(1, 9, 100), previewHistory(2, 3, 200), previewHistory(2, 9, 50),
+  ]);
+  assert.deepEqual(index.totals, { total: 3, read: 1, reading: 1 });
+  assert.deepEqual(index.progressByPath.get("G:/comic/volume"), index.totals);
+  assert.equal(index.historyByPath.get("g:/comic/volume/2").currentIndex, 3);
+});
+
+test("preview filters combine path terms and reading status without changing chapter order", () => {
+  const index = libraryUtils.buildLibraryPreviewIndex(previewTree, [previewHistory(1, 9, 100), previewHistory(2, 3, 200)]);
+  assert.deepEqual(libraryUtils.filterLibraryChapters(previewChapters, index.historyByPath, " 第一卷   第2 ", "reading"), [previewChapters[1]]);
+  assert.deepEqual(libraryUtils.filterLibraryChapters(previewChapters, index.historyByPath, "第一卷", "unread"), [previewChapters[2]]);
+  assert.deepEqual(libraryUtils.filterLibraryChapters(previewChapters, index.historyByPath, "第2", "read"), []);
+});
+
+test("suggested chapter resumes latest unfinished chapter, then unread, and handles completion", () => {
+  const index = libraryUtils.buildLibraryPreviewIndex(previewTree, [previewHistory(1, 2, 100), previewHistory(2, 3, 200)]);
+  assert.equal(libraryUtils.getSuggestedChapter(previewChapters, index.historyByPath), previewChapters[1]);
+  index.historyByPath.set("g:/comic/volume/1", previewHistory(1, 9, 300));
+  index.historyByPath.set("g:/comic/volume/2", previewHistory(2, 9, 400));
+  assert.equal(libraryUtils.getSuggestedChapter(previewChapters, index.historyByPath), previewChapters[2]);
+  index.historyByPath.set("g:/comic/volume/3", previewHistory(3, 9, 500));
+  assert.equal(libraryUtils.getSuggestedChapter(previewChapters, index.historyByPath), undefined);
+  assert.equal(libraryUtils.getSuggestedChapter([], index.historyByPath), undefined);
+});
+
+test("preview totals count images in a parent directory as a chapter too", () => {
+  const index = libraryUtils.buildLibraryPreviewIndex({ ...previewTree, readable: true, imageCount: 4 }, []);
+  assert.deepEqual(index.totals, { total: 4, read: 0, reading: 0 });
+});

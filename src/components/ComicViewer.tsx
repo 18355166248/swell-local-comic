@@ -6,6 +6,7 @@ import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import Toolbar from "./Toolbar";
 import ImageViewer from "./ImageViewer";
 import Navigation from "./Navigation";
+import PageOverview from "./PageOverview";
 import type { ChapterSequenceItem, ReadingHistory } from "../types";
 import { normalizeLibraryPathId } from "../utils/libraryUtils";
 
@@ -17,6 +18,7 @@ export default function ComicViewer() {
   );
   const [imagesPerGroup, setImagesPerGroup] = useState<number>(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showPageOverview, setShowPageOverview] = useState(false);
   const [fullscreenImageFit, setFullscreenImageFit] = useState<
     "original" | "fit"
   >("original");
@@ -37,7 +39,7 @@ export default function ComicViewer() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && isFullscreen) {
+      if (event.key === "Escape" && isFullscreen && !document.querySelector("dialog[open]")) {
         toggleFullscreen();
       }
     };
@@ -263,9 +265,22 @@ export default function ComicViewer() {
       )}
 
       <div
-        className={`relative flex-1 overflow-hidden ${isFullscreen ? "ml-0" : "ml-[320px]"}`}
+        className={`relative flex min-w-0 flex-1 flex-col overflow-hidden ${isFullscreen ? "ml-0" : "ml-[320px]"}`}
       >
-        <div className="flex h-full overflow-hidden">
+        {!isFullscreen && state.files.length > 0 && <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-[#0c1117] px-3 py-2 text-xs text-gray-300">
+          <div className="flex min-w-0 items-center gap-3">
+            <button type="button" disabled={state.isLoading} onClick={() => setShowPageOverview(true)} className="shrink-0 rounded-lg border border-blue-400/30 bg-blue-500/10 px-3 py-2 text-blue-100 hover:bg-blue-500/20 disabled:opacity-40">图片页览</button>
+            <span aria-live="polite" className="shrink-0 tabular-nums">第 {state.currentIndex + 1} / {state.files.length} 页</span>
+            <span className="hidden max-w-48 truncate text-gray-500 xl:inline" title={state.files[state.currentIndex]?.name}>{state.files[state.currentIndex]?.name}</span>
+          </div>
+          <div role="group" aria-label="图片缩放" className="flex items-center gap-1">
+            <span className="mr-2 hidden text-gray-500 2xl:inline">Ctrl + 滚轮缩放 · 放大后可拖拽</span>
+            <button type="button" onClick={actions.zoomOut} disabled={state.zoom <= 0.5} aria-label="缩小图片" className="rounded-lg px-3 py-2 hover:bg-white/10 disabled:opacity-30">缩小</button>
+            <button type="button" onClick={actions.resetZoom} title={state.viewMode === "page" ? "重置为适应预览区" : "重置缩放"} className="min-w-20 rounded-lg border border-white/10 px-3 py-2 hover:bg-white/10">{state.viewMode === "page" && state.zoom === 1 ? "适应屏幕" : `${Math.round(state.zoom * 100)}%`}</button>
+            <button type="button" onClick={actions.zoomIn} disabled={state.zoom >= 3} aria-label="放大图片" className="rounded-lg px-3 py-2 hover:bg-white/10 disabled:opacity-30">放大</button>
+          </div>
+        </div>}
+        <div className="flex min-h-0 flex-1 overflow-hidden">
           <div className="relative flex-1 overflow-hidden">
             {restoreHistory && (
               <div className="absolute left-0 right-0 top-0 z-50 bg-blue-600 px-4 py-2 text-center text-sm text-white">
@@ -312,6 +327,7 @@ export default function ComicViewer() {
               }
               onRetryImage={actions.retryImage}
               isLoading={state.isLoading}
+              isImageLoading={state.isImageLoading}
               imagesPerGroup={imagesPerGroup}
               isFullscreen={isFullscreen}
               onToggleFullscreen={toggleFullscreen}
@@ -325,6 +341,7 @@ export default function ComicViewer() {
                   : undefined
               }
               scrollTargetIndex={state.scrollTargetIndex}
+              scrollJumpRequest={state.scrollJumpRequest}
               fullscreenImageFit={fullscreenImageFit}
               onFullscreenImageFitChange={setFullscreenImageFit}
             />
@@ -363,6 +380,7 @@ export default function ComicViewer() {
             {state.error}
           </div>
         )}
+        {showPageOverview && state.files.length > 0 && <PageOverview key={state.folderPath} files={state.files} imageUrls={state.imageUrls} currentIndex={state.currentIndex} onGoToPage={actions.goToPage} onClose={() => setShowPageOverview(false)} />}
       </div>
     </div>
   );

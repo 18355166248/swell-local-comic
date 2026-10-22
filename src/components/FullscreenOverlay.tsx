@@ -1,5 +1,3 @@
-import { useState } from "react";
-
 interface FullscreenOverlayProps {
   progressText: string;
   fullscreenImageFit: "original" | "fit";
@@ -13,13 +11,9 @@ export function FullscreenOverlay({
   onFullscreenImageFitChange,
   onToggleFullscreen,
 }: FullscreenOverlayProps) {
-  const [showExit, setShowExit] = useState(false);
-
   return (
     <div
       className="absolute top-4 left-4 flex flex-col gap-2 z-20"
-      onMouseEnter={() => setShowExit(true)}
-      onMouseLeave={() => setShowExit(false)}
     >
       <div className="flex items-center gap-2 flex-wrap">
         <div className="bg-black/60 px-4 py-2 rounded-lg text-white text-sm">
@@ -47,10 +41,8 @@ export function FullscreenOverlay({
           </button>
         )}
       </div>
-      {showExit && (
-        <button
+      <button
           onClick={onToggleFullscreen}
-          onBlur={() => setShowExit(false)}
           className="bg-black/60 hover:bg-black/80 px-4 py-2 rounded-lg text-white text-sm flex items-center gap-2 transition-colors"
           title="退出全屏 (ESC)"
         >
@@ -69,8 +61,7 @@ export function FullscreenOverlay({
             />
           </svg>
           退出全屏
-        </button>
-      )}
+      </button>
     </div>
   );
 }
