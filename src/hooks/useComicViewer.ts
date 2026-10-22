@@ -20,6 +20,7 @@ import {
 } from "../utils/fileUtils";
 import { saveHistory } from "../utils/historyUtils";
 import { normalizeLibraryPathId } from "../utils/libraryUtils";
+import { createBufferedWriter } from "../utils/bufferedWriter";
 
 export const useComicViewer = () => {
   const [files, setFiles] = useState<ComicFile[]>([]);
@@ -53,7 +54,9 @@ export const useComicViewer = () => {
   const pageRequestRef = useRef(0);
   const pageRequestedPathRef = useRef("");
   const folderRequestRef = useRef(0);
+  const readerLifecycleRef = useRef(0);
   const [error, setError] = useState<string | null>(null);
+  const historyWriter = useMemo(() => createBufferedWriter(saveHistory), []);
 
   // 同步 ref，避免 loadNextFolder 依赖 isLoading state 导致级联重建
   useEffect(() => {
@@ -152,7 +155,7 @@ export const useComicViewer = () => {
       const targetMode = restoreData?.viewMode ?? viewMode;
       let firstUrl = "";
       try {
-        firstUrl = await getOrLoadImageFile(fileList[correctIndex]);
+        if (targetMode === "page") firstUrl = await getOrLoadImageFile(fileList[correctIndex]);
       } catch (loadError) {
         console.error("加载当前图片失败:", loadError);
         if (requestId === folderRequestRef.current && targetMode === "page") {
@@ -510,12 +513,29 @@ export const useComicViewer = () => {
     [viewMode, revokePageImageUrls, getOrLoadImageFile]
   );
 
+  const cancelPendingImageLoads = useCallback(() => {
+    pageRequestRef.current++;
+    folderRequestRef.current++;
+    scrollLoadRequestRef.current++;
+    pageRequestedPathRef.current = "";
+  }, []);
+
+  const releaseReadingResources = useCallback((lifecycle: number) => {
+    if (readerLifecycleRef.current !== lifecycle) return;
+    cancelPendingImageLoads();
+    revokeImageUrls(currentImageUrlsRef.current);
+    revokePageImageUrls();
+  }, [cancelPendingImageLoads, revokePageImageUrls]);
+
   useEffect(() => {
+    const lifecycle = ++readerLifecycleRef.current;
     return () => {
-      revokeImageUrls(currentImageUrlsRef.current);
-      revokePageImageUrls();
+      // StrictMode immediately replays setup/cleanup on mount. Only release a
+      // genuinely unmounted reader, otherwise its consumed open-folder request
+      // would be cancelled with no second request to replace it.
+      queueMicrotask(() => releaseReadingResources(lifecycle));
     };
-  }, [revokePageImageUrls]);
+  }, [releaseReadingResources]);
 
   /** 后台预加载相邻图片（距离当前页 ±2），翻页瞬间无闪烁 */
   const preloadAdjacent = useCallback(
@@ -592,7 +612,16 @@ export const useComicViewer = () => {
 
     if (newMode === "page") {
       scrollLoadRequestRef.current++;
-      revokeImageUrls(currentImageUrlsRef.current);
+      const currentScrollUrl = currentImageUrlsRef.current[currentIndex] || "";
+      // Transfer ownership of the current scroll image into the page cache.
+      // Its URL must survive releasing the rest of the scroll chapter.
+      revokeImageUrls(currentImageUrlsRef.current.filter((url) => url !== currentScrollUrl));
+      if (currentScrollUrl && files[currentIndex]) {
+        revokePageImageUrls(currentScrollUrl);
+        preloadCacheRef.current.set(files[currentIndex].path, currentScrollUrl);
+        currentImageUrlRef.current = currentScrollUrl;
+        setImageUrl(currentScrollUrl);
+      }
       currentImageUrlsRef.current = [];
       setImageUrls([]);
       setScrollTargetIndex(null);
@@ -615,9 +644,13 @@ export const useComicViewer = () => {
         setImageUrls(urls);
         setLoadingProgress(progress);
       }, () => requestId !== folderRequestRef.current || scrollLoadId !== scrollLoadRequestRef.current);
-      if (requestId === folderRequestRef.current && scrollLoadId === scrollLoadRequestRef.current) setIsLoading(false);
+      if (requestId === folderRequestRef.current && scrollLoadId === scrollLoadRequestRef.current) {
+        revokePageImageUrls();
+        setImageUrl("");
+        setIsLoading(false);
+      }
     }
-  }, [viewMode, files, currentIndex, loadImage]);
+  }, [viewMode, files, currentIndex, loadImage, revokePageImageUrls]);
 
   // 设置图片宽度
   const setImageWidthValue = useCallback((width: number) => {
@@ -636,10 +669,10 @@ export const useComicViewer = () => {
     [zoomIn, zoomOut],
   );
 
-  // 保存阅读历史记录
+  // Merge high-frequency scroll/zoom updates without blocking every render.
   useEffect(() => {
-    if (folderName && folderPath && files.length > 0) {
-      saveHistory({
+    if (folderName && folderPath && files.length > 0 && !isLoading) {
+      historyWriter.schedule(normalizeLibraryPathId(folderPath), {
         folderName,
         folderPath,
         files,
@@ -665,7 +698,22 @@ export const useComicViewer = () => {
     scrollRatio,
     scrollPosition,
     scrollHeight,
+    isLoading,
+    historyWriter,
   ]);
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") historyWriter.flush();
+    };
+    window.addEventListener("pagehide", historyWriter.flush);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("pagehide", historyWriter.flush);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      historyWriter.flush();
+    };
+  }, [historyWriter]);
 
   const setScrollRatioWrapped = useCallback(
     (ratio: number) => setScrollRatio(Math.max(0.1, Math.min(1.0, ratio))),
@@ -753,11 +801,12 @@ export const useComicViewer = () => {
     onScrollPositionChange,
     onCurrentImageChange,
     retryImage,
+    flushHistory: historyWriter.flush,
     loadNextFolder: loadNextFolderAction,
   }), [
     handleFolderSelect, nextPage, prevPage, zoomIn, zoomOut, resetZoom,
     handleWheel, toggleViewMode, setImageWidthValue, setScrollRatioWrapped,
-    goToPage, onScrollPositionChange, onCurrentImageChange, retryImage, loadNextFolderAction,
+    goToPage, onScrollPositionChange, onCurrentImageChange, retryImage, loadNextFolderAction, historyWriter,
   ]);
 
   const state = useMemo<ComicViewerState>(() => ({

@@ -5,6 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { ViewMode } from "../types";
 
 interface ToolbarProps {
+  onBeforeLeave?: () => void;
   onFolderSelect: () => void;
   onPrevChapter?: () => void;
   onNextChapter?: () => void;
@@ -55,6 +56,7 @@ const clampNumericInput = (
 };
 
 export default function Toolbar({
+  onBeforeLeave,
   onFolderSelect,
   onPrevChapter,
   onNextChapter,
@@ -184,7 +186,7 @@ export default function Toolbar({
 
         <div className="grid grid-cols-2 gap-2">
           <button
-            onClick={() => navigate("/")}
+            onClick={() => { onBeforeLeave?.(); navigate("/"); }}
             className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-gray-100 transition-colors hover:bg-white/[0.08]"
           >
             返回书库

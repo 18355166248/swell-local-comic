@@ -231,6 +231,7 @@ export default function ComicViewer() {
       {!isFullscreen && (
         <div className="fixed bottom-0 left-0 top-0 z-40">
           <Toolbar
+            onBeforeLeave={actions.flushHistory}
             onFolderSelect={handleFolderSelect}
             onPrevChapter={() => void openChapterBySequence(prevChapter)}
             onNextChapter={() => void openChapterBySequence(nextChapter)}
