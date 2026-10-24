@@ -44,6 +44,7 @@ interface ImageViewerProps {
   isImageLoading?: boolean;
   imagesPerGroup?: number; // 每组图片数量，默认1（每张图片单独显示），可以配置成5（每5张合成一张）
   isFullscreen?: boolean;
+  isImmersive?: boolean;
   onToggleFullscreen?: () => void;
   currentIndex?: number;
   totalFiles?: number;
@@ -81,6 +82,7 @@ export default function ImageViewer({
   isImageLoading = false,
   imagesPerGroup = 1,
   isFullscreen = false,
+  isImmersive = true,
   onToggleFullscreen,
   currentIndex = 0,
   totalFiles = 0,
@@ -365,6 +367,7 @@ export default function ImageViewer({
         {/* 全屏模式：进度、适配方式和可键盘访问的退出按钮 */}
         {isFullscreen && onToggleFullscreen && totalFiles > 0 && (
           <FullscreenOverlay
+            immersive={isImmersive}
             progressText={
               scrollPositionRatio !== undefined
                 ? `${currentIndex + 1} / ${totalFiles} · ${Math.round(scrollPositionRatio * 100)}%`
@@ -430,6 +433,7 @@ export default function ImageViewer({
       {/* 全屏模式：进度、适配方式和可键盘访问的退出按钮 */}
       {isFullscreen && onToggleFullscreen && totalFiles > 0 && (
         <FullscreenOverlay
+          immersive={isImmersive}
           progressText={`${currentIndex + 1} / ${totalFiles}`}
           fit={fullscreenImageFit}
           onFitChange={onFullscreenImageFitChange}

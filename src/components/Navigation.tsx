@@ -14,6 +14,7 @@ interface NavigationProps {
   onBackToLibrary: () => void;
   onToggleSettings: () => void;
   settingsOpen: boolean;
+  immersive: boolean;
 }
 
 const railButton = "flex h-9 w-10 items-center justify-center rounded-lg text-slate-200 hover:bg-white/10 focus-visible:outline-blue-400";
@@ -73,6 +74,7 @@ export default function Navigation({
   onBackToLibrary,
   onToggleSettings,
   settingsOpen,
+  immersive,
 }: NavigationProps) {
   if (files.length === 0) return null;
 
@@ -92,8 +94,8 @@ export default function Navigation({
           <NextChapterIcon size={18} aria-hidden="true" />
         </button>
       )}
-      <button type="button" onClick={onToggleSettings} aria-label="阅读设置" aria-expanded={settingsOpen} aria-controls="reader-settings" title="阅读设置" className={`${railButton} border-t border-white/10 text-[11px]`}>设置</button>
-      <button type="button" onClick={onBackToLibrary} aria-label="返回书库" title="返回书库" className={`${railButton} text-[11px]`}>书库</button>
+      {immersive && <button type="button" onClick={onToggleSettings} aria-label="阅读设置" aria-expanded={settingsOpen} aria-controls="reader-settings" title="阅读设置" className={`${railButton} border-t border-white/10 text-[11px]`}>设置</button>}
+      {immersive && <button type="button" onClick={onBackToLibrary} aria-label="返回书库" title="返回书库" className={`${railButton} text-[11px]`}>书库</button>}
     </nav>
   );
 }

@@ -26,7 +26,8 @@ export default function ComicViewer() {
   const { isFullscreen, fullscreenError, toggleFullscreen } = useNativeFullscreen();
   const [showPageOverview, setShowPageOverview] = useState(false);
   const [activeReaderEdge, setActiveReaderEdge] = useState<"left" | "right" | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(() => localStorage.getItem("comic_reader_settings_open") === "true");
+  const [isImmersive, setIsImmersive] = useState(() => localStorage.getItem("comic_reader_immersive") !== "false");
+  const [settingsOpen, setSettingsOpen] = useState(() => !isImmersive && localStorage.getItem("comic_reader_settings_open") === "true");
   const [pageImageFit, setPageImageFit] = useState<PageImageFit>("height");
   const [scrollFullscreenFit, setScrollFullscreenFit] = useState<PageImageFit>("contain");
   const hasProcessedOpenFolder = useRef(false);
@@ -53,6 +54,15 @@ export default function ComicViewer() {
     localStorage.setItem("comic_reader_settings_open", String(!open));
     return !open;
   });
+  const toggleImmersive = () => {
+    const next = !isImmersive;
+    setIsImmersive(next);
+    localStorage.setItem("comic_reader_immersive", String(next));
+    if (next) {
+      setSettingsOpen(false);
+      localStorage.setItem("comic_reader_settings_open", "false");
+    }
+  };
   const handleReaderPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "touch") return;
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -260,14 +270,18 @@ export default function ComicViewer() {
   const progressValue = state.loadingProgress || 0;
   const progressCount = state.scrollImageStates.filter((status) => status === "ready" || status === "error").length;
   const totalCount = state.files.length;
+  const leftRailMode = isImmersive ? (activeReaderEdge === "left" ? "reader-rail-active" : "") : "reader-rail-pinned";
+  const rightRailMode = isImmersive ? (activeReaderEdge === "right" ? "reader-rail-active" : "") : "reader-rail-pinned";
 
   return (
     <div className="reader-layout">
-      {!isFullscreen && totalCount > 0 && <div data-tauri-drag-region aria-hidden="true" className="reader-window-drag" />}
-      {!isFullscreen && totalCount === 0 && <header className="flex h-12 shrink-0 items-center gap-3 border-b border-white/10 bg-[#0c131c] pl-3 text-sm">
+      {!isFullscreen && isImmersive && totalCount > 0 && <div data-tauri-drag-region aria-hidden="true" className="reader-window-drag" />}
+      {totalCount > 0 && (isImmersive || isFullscreen) && <button type="button" onClick={toggleImmersive} aria-pressed={isImmersive} className="reader-immersive-toggle">{isImmersive ? "退出沉浸" : "进入沉浸"}</button>}
+      {!isFullscreen && (!isImmersive || totalCount === 0) && <header className="flex h-12 shrink-0 items-center gap-3 border-b border-white/10 bg-[#0c131c] pl-3 text-sm">
         <button type="button" onClick={backToLibrary} className="ui-button !min-h-8 !px-3 !py-1">‹ <span className="hidden sm:inline">书库</span></button>
         <div data-tauri-drag-region className="flex h-full min-w-0 flex-1 items-center gap-3"><span className="truncate font-medium">{state.folderName || "Swell Comic"}</span><span className="hidden text-xs text-slate-500 md:inline">{state.viewMode === "scroll" ? "滚动阅读" : "分页阅读"}</span></div>
         <button type="button" className="ui-button !min-h-8 !px-3 !py-1" aria-expanded={settingsOpen} aria-controls="reader-settings" onClick={toggleSettings}>阅读设置</button>
+        {totalCount > 0 && <button type="button" onClick={toggleImmersive} aria-pressed={isImmersive} className="ui-button !min-h-8 !px-3 !py-1">进入沉浸</button>}
         <WindowControls onBeforeClose={persistCurrentReading} />
       </header>}
       <div className="relative flex min-h-0 flex-1">
@@ -383,6 +397,7 @@ export default function ComicViewer() {
               isImageLoading={state.isImageLoading}
               imagesPerGroup={imagesPerGroup}
               isFullscreen={isFullscreen}
+              isImmersive={isImmersive}
               onToggleFullscreen={toggleFullscreen}
               currentIndex={state.currentIndex}
               totalFiles={state.files.length}
@@ -399,7 +414,7 @@ export default function ComicViewer() {
               fullscreenImageFit={state.viewMode === "page" ? pageImageFit : scrollFullscreenFit}
               onFullscreenImageFitChange={state.viewMode === "page" ? setPageImageFit : setScrollFullscreenFit}
             />
-            {state.viewMode === "scroll" && !isFullscreen && state.files.length > 0 && (
+            {state.viewMode === "scroll" && !isFullscreen && isImmersive && state.files.length > 0 && (
               <div className={`reader-rail-reveal reader-rail-reveal-left ${activeReaderEdge === "left" ? "reader-rail-active" : ""}`}>
                 <button type="button" className="reader-rail-hotspot" aria-label="显示阅读入口" title="鼠标进入左侧显示阅读入口" />
                 <nav aria-label="阅读入口" className="reader-side-rail reader-rail-left text-xs">
@@ -410,8 +425,8 @@ export default function ComicViewer() {
             )}
             {state.viewMode === "page" && !isFullscreen && state.files.length > 0 && (
               <>
-                <div className={`reader-rail-reveal reader-rail-reveal-left ${activeReaderEdge === "left" ? "reader-rail-active" : ""}`}>
-                  <button type="button" className="reader-rail-hotspot" aria-label="显示分页导航" title="鼠标进入左侧显示分页导航" />
+                <div className={`reader-rail-reveal reader-rail-reveal-left ${leftRailMode}`}>
+                  {isImmersive && <button type="button" className="reader-rail-hotspot" aria-label="显示分页导航" title="鼠标进入左侧显示分页导航" />}
                   <Navigation
                     files={state.files}
                     currentIndex={state.currentIndex}
@@ -423,10 +438,11 @@ export default function ComicViewer() {
                     onBackToLibrary={backToLibrary}
                     onToggleSettings={toggleSettings}
                     settingsOpen={settingsOpen}
+                    immersive={isImmersive}
                   />
                 </div>
-                <div className={`reader-rail-reveal reader-rail-reveal-right ${activeReaderEdge === "right" ? "reader-rail-active" : ""}`}>
-                  <button type="button" className="reader-rail-hotspot" aria-label="显示图片工具" title="鼠标进入右侧显示图片工具" />
+                <div className={`reader-rail-reveal reader-rail-reveal-right ${rightRailMode}`}>
+                  {isImmersive && <button type="button" className="reader-rail-hotspot" aria-label="显示图片工具" title="鼠标进入右侧显示图片工具" />}
                   <PageImageTools
                     fit={pageImageFit}
                     onFitChange={setPageImageFit}

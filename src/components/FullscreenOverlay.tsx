@@ -6,6 +6,7 @@ interface FullscreenOverlayProps {
   onFitChange?: (mode: PageImageFit) => void;
   onToggleFullscreen: () => void;
   scrollMode?: boolean;
+  immersive?: boolean;
 }
 
 export function FullscreenOverlay({
@@ -14,6 +15,7 @@ export function FullscreenOverlay({
   onFitChange,
   onToggleFullscreen,
   scrollMode = false,
+  immersive = true,
 }: FullscreenOverlayProps) {
   const modes: Array<{ value: PageImageFit; label: string }> = scrollMode
     ? [{ value: "contain", label: "适应宽度" }, { value: "original", label: "原图宽度" }]
@@ -21,8 +23,8 @@ export function FullscreenOverlay({
 
   return (
     <div className="reader-fullscreen-chrome">
-      <button type="button" className="reader-top-hotspot" aria-label="显示全屏操作栏" title="鼠标移至顶部显示全屏操作栏" />
-      <div className="reader-fullscreen-panel flex max-w-[calc(100%-2rem)] flex-wrap items-center gap-2">
+      {immersive && <button type="button" className="reader-top-hotspot" aria-label="显示全屏操作栏" title="鼠标移至顶部显示全屏操作栏" />}
+      <div className={`reader-fullscreen-panel flex max-w-[calc(100%-2rem)] flex-wrap items-center gap-2 ${immersive ? "" : "reader-fullscreen-panel-pinned"}`}>
         <span className="rounded-lg bg-black/65 px-3 py-2 text-sm text-white" aria-live="polite">{progressText}</span>
         {onFitChange && (
           <div role="group" aria-label="全屏图片显示方式" className="flex flex-wrap gap-1 rounded-lg bg-black/65 p-1">
