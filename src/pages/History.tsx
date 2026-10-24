@@ -119,7 +119,7 @@ export default function History() {
                           <h2 className="min-w-0 truncate text-sm font-medium text-gray-100" title={history.folderName}>{history.folderName}</h2>
                           <span className={`shrink-0 text-xs ${status === "read" ? "text-emerald-400/80" : "text-blue-300/80"}`}>{status === "read" ? "已读" : "阅读中"}</span>
                         </div>
-                        <p className="mt-1.5 truncate text-xs text-gray-500" title={history.folderPath}>{history.folderPath}</p>
+                        <p className="mt-1.5 truncate text-xs text-gray-500 selectable" title={history.folderPath}>{history.folderPath}</p>
                         {history.currentFileName && <p className="mt-1 truncate text-xs text-gray-400" title={history.currentFileName}>停在 {history.currentFileName}</p>}
                       </div>
                       <div className="min-w-24 flex-1 sm:flex-none">
@@ -131,7 +131,7 @@ export default function History() {
                         <button type="button" onClick={() => void handleContinueReading(history)} disabled={openingPath !== null} aria-label={`${status === "read" ? "打开章节" : "继续阅读"} ${history.folderName}`} aria-busy={opening} className="ui-button ui-button-primary min-w-24">{opening ? "正在打开…" : status === "read" ? "打开章节" : "继续阅读"}</button>
                       </div>
                     </div>
-                    {rowError && <p role="alert" className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs leading-5 text-amber-200">{rowError} <span className="text-amber-200/70">可以重试打开，或返回书库重新扫描。</span></p>}
+                    {rowError && <p role="alert" className="selectable mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs leading-5 text-amber-200">{rowError} <span className="text-amber-200/70">可以重试打开，或返回书库重新扫描。</span></p>}
                   </li>
                 );
               })}

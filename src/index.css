@@ -12,6 +12,16 @@
   --accent: #2583ff;
 }
 body { margin: 0; min-width: 320px; }
+
+/* 桌面端观感：界面文字默认不可拖选，避免点按钮、拖画布、拖缩略图时出现网页式蓝色选区。
+   需要复制的内容（输入框、路径、报错详情）用下面的白名单或 .selectable 单独放行。 */
+body { user-select: none; -webkit-user-select: none; }
+input, textarea, select, [contenteditable="true"], pre, code, .selectable {
+  user-select: text;
+  -webkit-user-select: text;
+}
+/* 图片不参与原生拖拽（避免拖出半透明缩略图幽灵） */
+img { -webkit-user-drag: none; }
 button, input, select { font-family: inherit; }
 button, a, input, select, summary { -webkit-tap-highlight-color: transparent; }
 button:not(:disabled), summary { cursor: pointer; }

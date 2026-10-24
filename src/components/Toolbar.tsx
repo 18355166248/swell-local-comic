@@ -235,7 +235,7 @@ export default function Toolbar({
                   <button type="button" onClick={handleCopyPath} className="py-1 text-slate-400 hover:text-slate-100">复制路径</button>
                   <span role="status" className={copyState === "error" ? "text-amber-300" : "text-blue-300"}>{copyState === "done" ? "已复制" : copyState === "error" ? "复制失败" : ""}</span>
                 </div>
-                <p id={pathId} hidden={!isPathExpanded} className="mt-1 break-all leading-relaxed text-slate-500">{folderPath}</p>
+                <p id={pathId} hidden={!isPathExpanded} className="mt-1 break-all leading-relaxed text-slate-500 selectable">{folderPath}</p>
               </div>
             )}
           </div>

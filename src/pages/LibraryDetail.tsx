@@ -490,13 +490,13 @@ function LibraryDetailContent({ rootId }: { rootId: string | null }) {
           ))}
         </nav>
         <h1 className="page-heading truncate">{item?.name ?? "目录预览"}</h1>
-        <p className="mt-1.5 truncate text-xs text-gray-500" title={item?.rootPath}>{item?.rootPath}</p>
+        <p className="mt-1.5 truncate text-xs text-gray-500 selectable" title={item?.rootPath}>{item?.rootPath}</p>
       </div>
 
       {openingPath && <p role="status" className="text-xs text-blue-200">正在打开章节…</p>}
-      {openError && <p role="alert" className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-200">{openError}</p>}
+      {openError && <p role="alert" className="selectable rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-200">{openError}</p>}
       {scan && isLoading && <p role="status" className="text-xs text-gray-400">正在刷新目录，当前浏览位置会保留…</p>}
-      {scan && error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-200"><p>刷新失败，仍显示上次扫描结果。{error}</p><button type="button" onClick={refreshDirectory} className="ui-button shrink-0">重新扫描</button></div>}
+      {scan && error && <div role="alert" className="selectable flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-200"><p>刷新失败，仍显示上次扫描结果。{error}</p><button type="button" onClick={refreshDirectory} className="ui-button shrink-0">重新扫描</button></div>}
       {isLoading && !scan ? (
         <div role="status" className="surface-panel p-8 text-center text-sm text-gray-300">
           正在扫描目录...

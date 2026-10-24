@@ -298,7 +298,7 @@ export default function LibraryHome() {
                         </button>
                       </h3>
                       <p
-                        className="mt-1 truncate text-sm text-slate-400"
+                        className="mt-1 truncate text-sm text-slate-400 selectable"
                         title={item.rootPath}
                       >
                         {item.rootPath}

@@ -317,7 +317,7 @@ export default function ComicViewer() {
         <WindowControls onBeforeClose={persistCurrentReading} />
       </header>}
       <div className="relative flex min-h-0 flex-1">
-      {fullscreenError && <div role="alert" className="absolute right-4 top-4 z-[60] max-w-lg rounded-lg border border-amber-400/40 bg-[#1b1b18] px-4 py-3 text-sm text-amber-100 shadow-xl">{fullscreenError}</div>}
+      {fullscreenError && <div role="alert" className="selectable absolute right-4 top-4 z-[60] max-w-lg rounded-lg border border-amber-400/40 bg-[#1b1b18] px-4 py-3 text-sm text-amber-100 shadow-xl">{fullscreenError}</div>}
       {!isFullscreen && settingsOpen && (
         <div id="reader-settings" className="reader-settings">
           <Toolbar
@@ -507,7 +507,7 @@ export default function ComicViewer() {
           </div>
         )}
         {state.error && !state.isLoading && (
-          <div role="alert" className="absolute bottom-4 left-1/2 z-50 max-w-[80%] -translate-x-1/2 rounded-lg border border-red-400/30 bg-gray-950/95 px-4 py-2 text-center text-sm text-red-100 shadow-xl">
+          <div role="alert" className="selectable absolute bottom-4 left-1/2 z-50 max-w-[80%] -translate-x-1/2 rounded-lg border border-red-400/30 bg-gray-950/95 px-4 py-2 text-center text-sm text-red-100 shadow-xl">
             {state.error}
           </div>
         )}
