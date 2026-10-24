@@ -246,10 +246,11 @@ export default function ComicViewer() {
   const progressValue = state.loadingProgress || 0;
   const progressCount = state.scrollImageStates.filter((status) => status === "ready" || status === "error").length;
   const totalCount = state.files.length;
+  const overlayReaderHeader = state.viewMode === "page" && totalCount > 0;
 
   return (
     <div className="reader-layout">
-      {!isFullscreen && <header className="flex h-12 shrink-0 items-center gap-3 border-b border-white/10 bg-[#0c131c] pl-3 text-sm">
+      {!isFullscreen && <header className={`flex h-12 shrink-0 items-center gap-3 pl-3 text-sm ${overlayReaderHeader ? "reader-header-overlay" : "border-b border-white/10 bg-[#0c131c]"}`}>
         <button type="button" onClick={() => { persistCurrentReading(); navigate("/"); }} className="ui-button !min-h-8 !px-3 !py-1">‹ <span className="hidden sm:inline">书库</span></button>
         <div data-tauri-drag-region className="flex h-full min-w-0 flex-1 items-center gap-3"><span className="truncate font-medium">{state.folderName || "Swell Comic"}</span><span className="hidden text-xs text-slate-500 md:inline">{state.viewMode === "scroll" ? "滚动阅读" : "分页阅读"}</span></div>
         <button type="button" className="ui-button !min-h-8 !px-3 !py-1" aria-expanded={settingsOpen} aria-controls="reader-settings" onClick={toggleSettings}>阅读设置</button>
@@ -258,7 +259,7 @@ export default function ComicViewer() {
       <div className="relative flex min-h-0 flex-1">
       {fullscreenError && <div role="alert" className="absolute right-4 top-4 z-[60] max-w-lg rounded-lg border border-amber-400/40 bg-[#1b1b18] px-4 py-3 text-sm text-amber-100 shadow-xl">{fullscreenError}</div>}
       {!isFullscreen && settingsOpen && (
-        <div id="reader-settings" className="reader-settings">
+        <div id="reader-settings" className={`reader-settings ${overlayReaderHeader ? "pt-12" : ""}`}>
           <Toolbar
             onBeforeLeave={persistCurrentReading}
             onFolderSelect={handleFolderSelect}
