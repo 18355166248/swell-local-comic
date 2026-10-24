@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useComicViewer } from "../hooks/useComicViewer";
+import { useNativeFullscreen } from "../hooks/useNativeFullscreen";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import Toolbar from "./Toolbar";
 import ImageViewer from "./ImageViewer";
@@ -22,7 +22,7 @@ export default function ComicViewer() {
     null,
   );
   const [imagesPerGroup, setImagesPerGroup] = useState<number>(1);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const { isFullscreen, fullscreenError, toggleFullscreen } = useNativeFullscreen();
   const [showPageOverview, setShowPageOverview] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(() => localStorage.getItem("comic_reader_settings_open") === "true");
   const [pageImageFit, setPageImageFit] = useState<PageImageFit>("height");
@@ -47,17 +47,6 @@ export default function ComicViewer() {
     localStorage.setItem("comic_reader_settings_open", String(!open));
     return !open;
   });
-
-  const toggleFullscreen = useCallback(async () => {
-    try {
-      const window = getCurrentWindow();
-      const willBeFullscreen = !isFullscreen;
-      await window.setFullscreen(willBeFullscreen);
-      setIsFullscreen(willBeFullscreen);
-    } catch {
-      setIsFullscreen((prev) => !prev);
-    }
-  }, [isFullscreen]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -267,6 +256,7 @@ export default function ComicViewer() {
         <WindowControls onBeforeClose={persistCurrentReading} />
       </header>}
       <div className="relative flex min-h-0 flex-1">
+      {fullscreenError && <div role="alert" className="absolute right-4 top-4 z-[60] max-w-lg rounded-lg border border-amber-400/40 bg-[#1b1b18] px-4 py-3 text-sm text-amber-100 shadow-xl">{fullscreenError}</div>}
       {!isFullscreen && settingsOpen && (
         <div id="reader-settings" className="reader-settings">
           <Toolbar
