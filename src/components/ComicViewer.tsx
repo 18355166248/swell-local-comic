@@ -250,7 +250,8 @@ export default function ComicViewer() {
 
   return (
     <div className="reader-layout">
-      {!isFullscreen && <header className={`flex h-12 shrink-0 items-center gap-3 pl-3 text-sm ${overlayReaderHeader ? "reader-header-overlay" : "border-b border-white/10 bg-[#0c131c]"}`}>
+      {!isFullscreen && overlayReaderHeader && !settingsOpen && <button type="button" className="reader-top-hotspot" aria-label="显示顶部操作栏" title="鼠标移至顶部显示操作栏" />}
+      {!isFullscreen && <header className={`flex h-12 shrink-0 items-center gap-3 pl-3 text-sm ${overlayReaderHeader ? `reader-header-overlay ${settingsOpen ? "" : "reader-header-autohide"}` : "border-b border-white/10 bg-[#0c131c]"}`}>
         <button type="button" onClick={() => { persistCurrentReading(); navigate("/"); }} className="ui-button !min-h-8 !px-3 !py-1">‹ <span className="hidden sm:inline">书库</span></button>
         <div data-tauri-drag-region className="flex h-full min-w-0 flex-1 items-center gap-3"><span className="truncate font-medium">{state.folderName || "Swell Comic"}</span><span className="hidden text-xs text-slate-500 md:inline">{state.viewMode === "scroll" ? "滚动阅读" : "分页阅读"}</span></div>
         <button type="button" className="ui-button !min-h-8 !px-3 !py-1" aria-expanded={settingsOpen} aria-controls="reader-settings" onClick={toggleSettings}>阅读设置</button>
@@ -386,24 +387,30 @@ export default function ComicViewer() {
             />
             {state.viewMode === "page" && !isFullscreen && state.files.length > 0 && (
               <>
-                <Navigation
-                  files={state.files}
-                  currentIndex={state.currentIndex}
-                  onPrevPage={prevPage}
-                  onNextPage={nextPage}
-                  onGoToPage={actions.goToPage}
-                  onLoadNextFolder={loadNextFolder}
-                  onPageOverview={() => setShowPageOverview(true)}
-                />
-                <PageImageTools
-                  fit={pageImageFit}
-                  onFitChange={setPageImageFit}
-                  zoom={state.zoom}
-                  onZoomIn={actions.zoomIn}
-                  onZoomOut={actions.zoomOut}
-                  onResetZoom={actions.resetZoom}
-                  onToggleFullscreen={toggleFullscreen}
-                />
+                <div className="reader-rail-reveal reader-rail-reveal-left">
+                  <button type="button" className="reader-rail-hotspot" aria-label="显示分页导航" title="鼠标移至左侧显示分页导航" />
+                  <Navigation
+                    files={state.files}
+                    currentIndex={state.currentIndex}
+                    onPrevPage={prevPage}
+                    onNextPage={nextPage}
+                    onGoToPage={actions.goToPage}
+                    onLoadNextFolder={loadNextFolder}
+                    onPageOverview={() => setShowPageOverview(true)}
+                  />
+                </div>
+                <div className="reader-rail-reveal reader-rail-reveal-right">
+                  <button type="button" className="reader-rail-hotspot" aria-label="显示图片工具" title="鼠标移至右侧显示图片工具" />
+                  <PageImageTools
+                    fit={pageImageFit}
+                    onFitChange={setPageImageFit}
+                    zoom={state.zoom}
+                    onZoomIn={actions.zoomIn}
+                    onZoomOut={actions.zoomOut}
+                    onResetZoom={actions.resetZoom}
+                    onToggleFullscreen={toggleFullscreen}
+                  />
+                </div>
               </>
             )}
           </div>
