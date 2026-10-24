@@ -274,9 +274,9 @@ export default function ComicViewer() {
   const rightRailMode = isImmersive ? (activeReaderEdge === "right" ? "reader-rail-active" : "") : "reader-rail-pinned";
 
   return (
-    <div className="reader-layout">
+    <div className="reader-layout" onPointerMove={handleReaderPointerMove} onPointerLeave={() => setActiveReaderEdge(null)}>
       {!isFullscreen && isImmersive && totalCount > 0 && <div data-tauri-drag-region aria-hidden="true" className="reader-window-drag" />}
-      {totalCount > 0 && (isImmersive || isFullscreen) && <button type="button" onClick={toggleImmersive} aria-pressed={isImmersive} className="reader-immersive-toggle">{isImmersive ? "退出沉浸" : "进入沉浸"}</button>}
+      {totalCount > 0 && (isImmersive || isFullscreen) && <button type="button" onClick={toggleImmersive} aria-pressed={isImmersive} className={`reader-immersive-toggle ${isImmersive ? `reader-immersive-toggle-auto ${activeReaderEdge ? "reader-immersive-toggle-visible" : ""}` : ""}`}>{isImmersive ? "退出沉浸" : "进入沉浸"}</button>}
       {!isFullscreen && (!isImmersive || totalCount === 0) && <header className="flex h-12 shrink-0 items-center gap-3 border-b border-white/10 bg-[#0c131c] pl-3 text-sm">
         <button type="button" onClick={backToLibrary} className="ui-button !min-h-8 !px-3 !py-1">‹ <span className="hidden sm:inline">书库</span></button>
         <div data-tauri-drag-region className="flex h-full min-w-0 flex-1 items-center gap-3"><span className="truncate font-medium">{state.folderName || "Swell Comic"}</span><span className="hidden text-xs text-slate-500 md:inline">{state.viewMode === "scroll" ? "滚动阅读" : "分页阅读"}</span></div>
@@ -342,7 +342,7 @@ export default function ComicViewer() {
           </div>
         </div>}
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          <div className="relative flex-1 overflow-hidden" onPointerMove={handleReaderPointerMove} onPointerLeave={() => setActiveReaderEdge(null)}>
+          <div className="relative flex-1 overflow-hidden">
             {restoreHistory && (
               <div className="absolute left-0 right-0 top-0 z-50 bg-blue-600 px-4 py-2 text-center text-sm text-white">
                 从历史记录恢复: {restoreHistory.folderName} - 第{" "}
