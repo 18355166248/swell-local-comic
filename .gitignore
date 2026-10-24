@@ -16,6 +16,9 @@ release
 .tauri-dev-data/
 .webview-diagnostic/
 
+# OCR 训练数据（体积大，不纳入版本库）
+*.traineddata
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

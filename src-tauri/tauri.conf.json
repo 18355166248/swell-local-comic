@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "swell-local-comic",
   "version": "0.1.0",
-  "identifier": "com.swell.localcomic.probe",
+  "identifier": "com.swell.localcomic",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://127.0.0.1:1420",
