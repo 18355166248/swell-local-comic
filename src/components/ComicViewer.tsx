@@ -8,7 +8,9 @@ import ImageViewer from "./ImageViewer";
 import type { ImageViewerHandle } from "./ImageViewer";
 import WindowControls from "./WindowControls";
 import Navigation from "./Navigation";
+import PageImageTools from "./PageImageTools";
 import PageOverview from "./PageOverview";
+import type { PageImageFit } from "../utils/pageImageLayout";
 import type { ChapterSequenceItem, ReadingHistory } from "../types";
 import { normalizeLibraryPathId } from "../utils/libraryUtils";
 
@@ -23,9 +25,8 @@ export default function ComicViewer() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showPageOverview, setShowPageOverview] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(() => localStorage.getItem("comic_reader_settings_open") === "true");
-  const [fullscreenImageFit, setFullscreenImageFit] = useState<
-    "original" | "fit"
-  >("original");
+  const [pageImageFit, setPageImageFit] = useState<PageImageFit>("height");
+  const [scrollFullscreenFit, setScrollFullscreenFit] = useState<PageImageFit>("contain");
   const hasProcessedOpenFolder = useRef(false);
   const hasProcessedContinueReading = useRef(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -107,7 +108,7 @@ export default function ComicViewer() {
 
   useKeyboardShortcuts({
     viewMode: state.viewMode,
-    disableZoom: state.viewMode === "page" && isFullscreen && fullscreenImageFit === "fit",
+    disableZoom: false,
     onNextPage: nextPage,
     onPrevPage: prevPage,
     onZoomIn: actions.zoomIn,
@@ -306,7 +307,7 @@ export default function ComicViewer() {
       <div
         className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
       >
-        {!isFullscreen && state.files.length > 0 && <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-[#0c1117] px-3 py-2 text-xs text-gray-300">
+        {!isFullscreen && state.viewMode === "scroll" && state.files.length > 0 && <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-[#0c1117] px-3 py-2 text-xs text-gray-300">
           <div className="flex min-w-0 items-center gap-3">
             <button type="button" disabled={state.isLoading} onClick={() => setShowPageOverview(true)} className="shrink-0 rounded-lg border border-blue-400/30 bg-blue-500/10 px-3 py-2 text-blue-100 hover:bg-blue-500/20 disabled:opacity-40">图片页览</button>
             <span aria-live="polite" className="shrink-0 tabular-nums">第 {state.currentIndex + 1} / {state.files.length} 页</span>
@@ -316,7 +317,7 @@ export default function ComicViewer() {
           <div role="group" aria-label="图片缩放" className="flex items-center gap-1">
             <span className="mr-2 hidden text-gray-500 2xl:inline">Ctrl + 滚轮缩放 · 放大后可拖拽</span>
             <button type="button" onClick={actions.zoomOut} disabled={state.zoom <= 0.5} aria-label="缩小图片" className="rounded-lg px-3 py-2 hover:bg-white/10 disabled:opacity-30">缩小</button>
-            <button type="button" onClick={actions.resetZoom} title={state.viewMode === "page" ? "重置为适应预览区" : "重置缩放"} className="min-w-20 rounded-lg border border-white/10 px-3 py-2 hover:bg-white/10">{state.viewMode === "page" && state.zoom === 1 ? "适应屏幕" : `${Math.round(state.zoom * 100)}%`}</button>
+            <button type="button" onClick={actions.resetZoom} title="重置缩放" className="min-w-20 rounded-lg border border-white/10 px-3 py-2 hover:bg-white/10">{Math.round(state.zoom * 100)}%</button>
             <button type="button" onClick={actions.zoomIn} disabled={state.zoom >= 3} aria-label="放大图片" className="rounded-lg px-3 py-2 hover:bg-white/10 disabled:opacity-30">放大</button>
           </div>
         </div>}
@@ -388,23 +389,35 @@ export default function ComicViewer() {
               }
               scrollTargetIndex={state.scrollTargetIndex}
               scrollJumpRequest={state.scrollJumpRequest}
-              fullscreenImageFit={fullscreenImageFit}
-              onFullscreenImageFitChange={setFullscreenImageFit}
+              pageImageFit={pageImageFit}
+              fullscreenImageFit={state.viewMode === "page" ? pageImageFit : scrollFullscreenFit}
+              onFullscreenImageFitChange={state.viewMode === "page" ? setPageImageFit : setScrollFullscreenFit}
             />
+            {state.viewMode === "page" && !isFullscreen && state.files.length > 0 && (
+              <>
+                <Navigation
+                  files={state.files}
+                  currentIndex={state.currentIndex}
+                  onPrevPage={prevPage}
+                  onNextPage={nextPage}
+                  onGoToPage={actions.goToPage}
+                  onLoadNextFolder={loadNextFolder}
+                  onPageOverview={() => setShowPageOverview(true)}
+                />
+                <PageImageTools
+                  fit={pageImageFit}
+                  onFitChange={setPageImageFit}
+                  zoom={state.zoom}
+                  onZoomIn={actions.zoomIn}
+                  onZoomOut={actions.zoomOut}
+                  onResetZoom={actions.resetZoom}
+                  onToggleFullscreen={toggleFullscreen}
+                />
+              </>
+            )}
           </div>
 
         </div>
-          {state.viewMode === "page" && !isFullscreen && (
-            <Navigation
-              files={state.files}
-              currentIndex={state.currentIndex}
-              onPrevPage={prevPage}
-              onNextPage={nextPage}
-              onGoToPage={actions.goToPage}
-              onLoadNextFolder={loadNextFolder}
-            />
-          )}
-
         {state.isLoading && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70">
             <div className="rounded-xl border border-white/10 bg-gray-800 px-6 py-5 text-center shadow-2xl">

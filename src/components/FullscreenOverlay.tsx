@@ -1,67 +1,43 @@
+import type { PageImageFit } from "../utils/pageImageLayout";
+
 interface FullscreenOverlayProps {
   progressText: string;
-  fullscreenImageFit: "original" | "fit";
-  onFullscreenImageFitChange?: (mode: "original" | "fit") => void;
+  fit: PageImageFit;
+  onFitChange?: (mode: PageImageFit) => void;
   onToggleFullscreen: () => void;
+  scrollMode?: boolean;
 }
 
 export function FullscreenOverlay({
   progressText,
-  fullscreenImageFit,
-  onFullscreenImageFitChange,
+  fit,
+  onFitChange,
   onToggleFullscreen,
+  scrollMode = false,
 }: FullscreenOverlayProps) {
+  const modes: Array<{ value: PageImageFit; label: string }> = scrollMode
+    ? [{ value: "contain", label: "适应宽度" }, { value: "original", label: "原图宽度" }]
+    : [{ value: "height", label: "铺满高度" }, { value: "contain", label: "完整显示" }, { value: "original", label: "原图大小" }];
+
   return (
-    <div
-      className="absolute top-4 left-4 flex flex-col gap-2 z-20"
-    >
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="bg-black/60 px-4 py-2 rounded-lg text-white text-sm">
-          {progressText}
+    <div className="absolute left-4 top-4 z-20 flex max-w-[calc(100%-2rem)] flex-wrap items-center gap-2">
+      <span className="rounded-lg bg-black/65 px-3 py-2 text-sm text-white" aria-live="polite">{progressText}</span>
+      {onFitChange && (
+        <div role="group" aria-label="全屏图片显示方式" className="flex flex-wrap gap-1 rounded-lg bg-black/65 p-1">
+          {modes.map((mode) => (
+            <button
+              key={mode.value}
+              type="button"
+              aria-pressed={fit === mode.value}
+              onClick={() => onFitChange(mode.value)}
+              className={`rounded-md px-2.5 py-1 text-xs transition-colors ${fit === mode.value ? "bg-blue-600 text-white" : "text-slate-200 hover:bg-white/15"}`}
+            >
+              {mode.label}
+            </button>
+          ))}
         </div>
-        {onFullscreenImageFitChange && (
-          <button
-            onClick={() =>
-              onFullscreenImageFitChange(
-                fullscreenImageFit === "original" ? "fit" : "original",
-              )
-            }
-            className={`px-3 py-2 rounded-lg text-sm transition-colors ${
-              fullscreenImageFit === "fit"
-                ? "bg-blue-600 text-white"
-                : "bg-black/60 text-white hover:bg-black/80"
-            }`}
-            title={
-              fullscreenImageFit === "original"
-                ? "当前：原图大小，点击适应屏幕"
-                : "当前：适应屏幕，点击原图大小"
-            }
-          >
-            {fullscreenImageFit === "original" ? "适应屏幕" : "原图"}
-          </button>
-        )}
-      </div>
-      <button
-          onClick={onToggleFullscreen}
-          className="bg-black/60 hover:bg-black/80 px-4 py-2 rounded-lg text-white text-sm flex items-center gap-2 transition-colors"
-          title="退出全屏 (ESC)"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
-          退出全屏
-      </button>
+      )}
+      <button type="button" onClick={onToggleFullscreen} className="rounded-lg bg-black/65 px-3 py-2 text-sm text-white hover:bg-black/80" title="退出全屏 (Esc)">退出全屏</button>
     </div>
   );
 }
