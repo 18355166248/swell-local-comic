@@ -9,6 +9,7 @@ import {
 
 interface ToolbarProps {
   onBeforeLeave?: () => void;
+  onClose?: () => void;
   onFolderSelect: () => void;
   onPrevChapter?: () => void;
   onNextChapter?: () => void;
@@ -91,6 +92,7 @@ const detailsClass = "group border-b border-white/[0.07]";
 
 export default function Toolbar({
   onBeforeLeave,
+  onClose,
   onFolderSelect,
   onPrevChapter,
   onNextChapter,
@@ -158,6 +160,7 @@ export default function Toolbar({
     <aside aria-label="阅读设置" className="flex h-full w-full max-w-[280px] flex-col border-r border-white/[0.07] bg-[#0c1117] text-sm text-slate-200">
       <div className="flex items-center justify-between gap-3 border-b border-white/[0.07] px-4 py-3">
         <h2 className="font-medium text-slate-100">阅读设置</h2>
+        {onClose && <button type="button" onClick={onClose} aria-label="收起阅读设置" className="rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-white/10">收起</button>}
         <button
           type="button"
           onClick={() => { onBeforeLeave?.(); onFolderSelect(); }}

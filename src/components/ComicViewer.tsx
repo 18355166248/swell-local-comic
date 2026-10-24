@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useComicViewer } from "../hooks/useComicViewer";
 import { useNativeFullscreen } from "../hooks/useNativeFullscreen";
@@ -24,6 +25,7 @@ export default function ComicViewer() {
   const [imagesPerGroup, setImagesPerGroup] = useState<number>(1);
   const { isFullscreen, fullscreenError, toggleFullscreen } = useNativeFullscreen();
   const [showPageOverview, setShowPageOverview] = useState(false);
+  const [activeReaderEdge, setActiveReaderEdge] = useState<"left" | "right" | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(() => localStorage.getItem("comic_reader_settings_open") === "true");
   const [pageImageFit, setPageImageFit] = useState<PageImageFit>("height");
   const [scrollFullscreenFit, setScrollFullscreenFit] = useState<PageImageFit>("contain");
@@ -34,6 +36,10 @@ export default function ComicViewer() {
   const persistCurrentReading = useCallback(() => {
     actions.persistHistory(imageViewerRef.current?.flushScrollPosition() ?? undefined);
   }, [actions]);
+  const backToLibrary = useCallback(() => {
+    persistCurrentReading();
+    navigate("/");
+  }, [navigate, persistCurrentReading]);
   useEffect(() => {
     const hidden = () => { if (document.visibilityState === "hidden") persistCurrentReading(); };
     window.addEventListener("pagehide", persistCurrentReading);
@@ -47,6 +53,14 @@ export default function ComicViewer() {
     localStorage.setItem("comic_reader_settings_open", String(!open));
     return !open;
   });
+  const handleReaderPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch") return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const edgeWidth = Math.min(320, Math.max(120, bounds.width * 0.2));
+    const x = event.clientX - bounds.left;
+    const nextEdge = x <= edgeWidth ? "left" : x >= bounds.width - edgeWidth ? "right" : null;
+    setActiveReaderEdge((current) => current === nextEdge ? current : nextEdge);
+  };
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -246,13 +260,12 @@ export default function ComicViewer() {
   const progressValue = state.loadingProgress || 0;
   const progressCount = state.scrollImageStates.filter((status) => status === "ready" || status === "error").length;
   const totalCount = state.files.length;
-  const overlayReaderHeader = state.viewMode === "page" && totalCount > 0;
 
   return (
     <div className="reader-layout">
-      {!isFullscreen && overlayReaderHeader && !settingsOpen && <button type="button" className="reader-top-hotspot" aria-label="显示顶部操作栏" title="鼠标移至顶部显示操作栏" />}
-      {!isFullscreen && <header className={`flex h-12 shrink-0 items-center gap-3 pl-3 text-sm ${overlayReaderHeader ? `reader-header-overlay ${settingsOpen ? "" : "reader-header-autohide"}` : "border-b border-white/10 bg-[#0c131c]"}`}>
-        <button type="button" onClick={() => { persistCurrentReading(); navigate("/"); }} className="ui-button !min-h-8 !px-3 !py-1">‹ <span className="hidden sm:inline">书库</span></button>
+      {!isFullscreen && totalCount > 0 && <div data-tauri-drag-region aria-hidden="true" className="reader-window-drag" />}
+      {!isFullscreen && totalCount === 0 && <header className="flex h-12 shrink-0 items-center gap-3 border-b border-white/10 bg-[#0c131c] pl-3 text-sm">
+        <button type="button" onClick={backToLibrary} className="ui-button !min-h-8 !px-3 !py-1">‹ <span className="hidden sm:inline">书库</span></button>
         <div data-tauri-drag-region className="flex h-full min-w-0 flex-1 items-center gap-3"><span className="truncate font-medium">{state.folderName || "Swell Comic"}</span><span className="hidden text-xs text-slate-500 md:inline">{state.viewMode === "scroll" ? "滚动阅读" : "分页阅读"}</span></div>
         <button type="button" className="ui-button !min-h-8 !px-3 !py-1" aria-expanded={settingsOpen} aria-controls="reader-settings" onClick={toggleSettings}>阅读设置</button>
         <WindowControls onBeforeClose={persistCurrentReading} />
@@ -260,9 +273,10 @@ export default function ComicViewer() {
       <div className="relative flex min-h-0 flex-1">
       {fullscreenError && <div role="alert" className="absolute right-4 top-4 z-[60] max-w-lg rounded-lg border border-amber-400/40 bg-[#1b1b18] px-4 py-3 text-sm text-amber-100 shadow-xl">{fullscreenError}</div>}
       {!isFullscreen && settingsOpen && (
-        <div id="reader-settings" className={`reader-settings ${overlayReaderHeader ? "pt-12" : ""}`}>
+        <div id="reader-settings" className="reader-settings">
           <Toolbar
             onBeforeLeave={persistCurrentReading}
+            onClose={toggleSettings}
             onFolderSelect={handleFolderSelect}
             onPrevChapter={() => void openChapterBySequence(prevChapter)}
             onNextChapter={() => void openChapterBySequence(nextChapter)}
@@ -314,7 +328,7 @@ export default function ComicViewer() {
           </div>
         </div>}
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          <div className="relative flex-1 overflow-hidden">
+          <div className="relative flex-1 overflow-hidden" onPointerMove={handleReaderPointerMove} onPointerLeave={() => setActiveReaderEdge(null)}>
             {restoreHistory && (
               <div className="absolute left-0 right-0 top-0 z-50 bg-blue-600 px-4 py-2 text-center text-sm text-white">
                 从历史记录恢复: {restoreHistory.folderName} - 第{" "}
@@ -385,10 +399,19 @@ export default function ComicViewer() {
               fullscreenImageFit={state.viewMode === "page" ? pageImageFit : scrollFullscreenFit}
               onFullscreenImageFitChange={state.viewMode === "page" ? setPageImageFit : setScrollFullscreenFit}
             />
+            {state.viewMode === "scroll" && !isFullscreen && state.files.length > 0 && (
+              <div className={`reader-rail-reveal reader-rail-reveal-left ${activeReaderEdge === "left" ? "reader-rail-active" : ""}`}>
+                <button type="button" className="reader-rail-hotspot" aria-label="显示阅读入口" title="鼠标进入左侧显示阅读入口" />
+                <nav aria-label="阅读入口" className="reader-side-rail reader-rail-left text-xs">
+                  <button type="button" onClick={toggleSettings} aria-label="阅读设置" aria-expanded={settingsOpen} aria-controls="reader-settings" className="h-9 w-10 rounded-lg hover:bg-white/10">设置</button>
+                  <button type="button" onClick={backToLibrary} aria-label="返回书库" className="h-9 w-10 rounded-lg hover:bg-white/10">书库</button>
+                </nav>
+              </div>
+            )}
             {state.viewMode === "page" && !isFullscreen && state.files.length > 0 && (
               <>
-                <div className="reader-rail-reveal reader-rail-reveal-left">
-                  <button type="button" className="reader-rail-hotspot" aria-label="显示分页导航" title="鼠标移至左侧显示分页导航" />
+                <div className={`reader-rail-reveal reader-rail-reveal-left ${activeReaderEdge === "left" ? "reader-rail-active" : ""}`}>
+                  <button type="button" className="reader-rail-hotspot" aria-label="显示分页导航" title="鼠标进入左侧显示分页导航" />
                   <Navigation
                     files={state.files}
                     currentIndex={state.currentIndex}
@@ -397,10 +420,13 @@ export default function ComicViewer() {
                     onGoToPage={actions.goToPage}
                     onLoadNextFolder={loadNextFolder}
                     onPageOverview={() => setShowPageOverview(true)}
+                    onBackToLibrary={backToLibrary}
+                    onToggleSettings={toggleSettings}
+                    settingsOpen={settingsOpen}
                   />
                 </div>
-                <div className="reader-rail-reveal reader-rail-reveal-right">
-                  <button type="button" className="reader-rail-hotspot" aria-label="显示图片工具" title="鼠标移至右侧显示图片工具" />
+                <div className={`reader-rail-reveal reader-rail-reveal-right ${activeReaderEdge === "right" ? "reader-rail-active" : ""}`}>
+                  <button type="button" className="reader-rail-hotspot" aria-label="显示图片工具" title="鼠标进入右侧显示图片工具" />
                   <PageImageTools
                     fit={pageImageFit}
                     onFitChange={setPageImageFit}
