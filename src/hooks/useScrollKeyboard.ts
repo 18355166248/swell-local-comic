@@ -1,5 +1,6 @@
 import { useRef, useEffect, useCallback } from "react";
 import type { ViewMode } from "../types";
+import { isKeyOwningWidget } from "../utils/keyboardTarget";
 
 interface UseScrollKeyboardOptions {
   viewMode: ViewMode;
@@ -8,6 +9,8 @@ interface UseScrollKeyboardOptions {
   onLoadNextFolderAtBottom?: () => void;
   isLoading?: boolean;
   onScrollIntent?: () => void;
+  /** 滚动键生效前调用：把键盘焦点放回阅读画面（清除按钮上的“选中”描边）。 */
+  onEngageReader?: () => void;
 }
 
 const AT_BOTTOM_THRESHOLD = 5;
@@ -27,6 +30,7 @@ export function useScrollKeyboard({
   onLoadNextFolderAtBottom,
   isLoading = false,
   onScrollIntent,
+  onEngageReader,
 }: UseScrollKeyboardOptions) {
   const holdTimerRef = useRef<number | null>(null);
   const intervalRef = useRef<number | null>(null);
@@ -34,6 +38,7 @@ export function useScrollKeyboard({
   const isLoadingRef = useRef(isLoading);
   const onLoadNextRef = useRef(onLoadNextFolderAtBottom);
   const onScrollIntentRef = useRef(onScrollIntent);
+  const onEngageReaderRef = useRef(onEngageReader);
   // ref mirror of scrollRatio so effect doesn't rebuild on slider drag
   const scrollRatioRef = useRef(scrollRatio);
 
@@ -42,7 +47,8 @@ export function useScrollKeyboard({
     onLoadNextRef.current = onLoadNextFolderAtBottom;
     scrollRatioRef.current = scrollRatio;
     onScrollIntentRef.current = onScrollIntent;
-  }, [isLoading, onLoadNextFolderAtBottom, scrollRatio, onScrollIntent]);
+    onEngageReaderRef.current = onEngageReader;
+  }, [isLoading, onLoadNextFolderAtBottom, scrollRatio, onScrollIntent, onEngageReader]);
 
   // 不依赖 scrollRatio/isLoading/onLoadNext，避免 effect 频繁销毁重建
   useEffect(() => {
@@ -52,11 +58,10 @@ export function useScrollKeyboard({
     }
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey || document.querySelector("dialog[open]")) return;
-      const target = e.target as HTMLElement;
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable || target.closest("button, a, select, [role='button']")) {
-        return;
-      }
+      if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+      if (document.querySelector("dialog[open]")) return;
+      // 按钮/链接不再吞掉 ↑/↓/W/S，否则点过工具按钮后滚动也会失效。
+      if (isKeyOwningWidget(e.target)) return;
 
       const key = e.key.toLowerCase();
       const code = e.key;
@@ -66,6 +71,7 @@ export function useScrollKeyboard({
       if (isLoadingRef.current) return;
 
       e.preventDefault();
+      onEngageReaderRef.current?.();
       const dir: 1 | -1 = isUp ? -1 : 1;
       const c = scrollContainerRef.current;
       if (!c) return;

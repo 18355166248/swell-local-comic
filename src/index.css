@@ -59,6 +59,8 @@ button:disabled { cursor: not-allowed; }
 .reader-settings { width: 280px; flex-shrink: 0; overflow-y: auto; border-right: 1px solid var(--line); }
 .page-image-viewport { scrollbar-width: none; }
 .page-image-viewport::-webkit-scrollbar { display: none; }
+/* 阅读画面本身可聚焦（方向键归属它），但整块画面不套 focus 描边，免得像“选中”了页面 */
+.page-image-viewport:focus-visible, .scroll-mode-container:focus-visible { outline: none; }
 .reader-rail-reveal { position: absolute; z-index: 20; top: 0; bottom: 0; width: 74px; pointer-events: none; }
 .reader-rail-reveal-left { left: 0; }
 .reader-rail-reveal-right { right: 0; }

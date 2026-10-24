@@ -1,5 +1,14 @@
 import { useEffect, useCallback } from "react";
 import type { ViewMode } from "../types";
+import { isKeyOwningWidget } from "../utils/keyboardTarget";
+
+/** 阅读器会消费的按键；命中后先把键盘焦点收回画面，避免焦点留在工具按钮上。 */
+const READER_SHORTCUT_KEYS: ReadonlySet<string> = new Set([
+  "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown",
+  "PageUp", "PageDown", "Home", "End", " ",
+  "a", "A", "d", "D", "f", "F", "m", "M", "w", "W", "s", "S",
+  "+", "=", "-", "_", "0",
+]);
 
 interface UseKeyboardShortcutsOptions {
   viewMode: ViewMode;
@@ -17,6 +26,8 @@ interface UseKeyboardShortcutsOptions {
   onScrollDown: () => void;
   onScrollStart: () => void;
   onScrollEnd: () => void;
+  /** 阅读键生效前调用：把键盘焦点放回阅读画面（清除按钮上的“选中”描边）。 */
+  onEngageReader?: () => void;
 }
 
 /**
@@ -38,19 +49,19 @@ export function useKeyboardShortcuts({
   onScrollDown,
   onScrollStart,
   onScrollEnd,
+  onEngageReader,
 }: UseKeyboardShortcutsOptions) {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (e.ctrlKey || e.metaKey || e.altKey || document.querySelector("dialog[open]")) return;
-      if (
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.isContentEditable ||
-        Boolean(target.closest("button, a, select, [role='button']"))
-      ) {
-        return;
-      }
+      if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+      if (document.querySelector("dialog[open]")) return;
+      // 只有真正自己用方向键的控件（输入框、下拉、滑块…）才交还按键；
+      // 按钮/链接不再吞掉翻页键，否则点过工具按钮后方向键会失效。
+      if (isKeyOwningWidget(e.target)) return;
+      if (!READER_SHORTCUT_KEYS.has(e.key)) return;
+
+      // 方向键一旦用于阅读，就把焦点收回画面，避免按钮被 :focus-visible 高亮成“选中”。
+      onEngageReader?.();
 
       switch (e.key) {
         case "ArrowRight":
@@ -121,7 +132,7 @@ export function useKeyboardShortcuts({
           break;
       }
     },
-    [viewMode, disableZoom, onNextPage, onPrevPage, onZoomIn, onZoomOut, onResetZoom, onToggleFullscreen, onToggleViewMode, onGoToFirst, onGoToLast, onScrollUp, onScrollDown, onScrollStart, onScrollEnd],
+    [viewMode, disableZoom, onNextPage, onPrevPage, onZoomIn, onZoomOut, onResetZoom, onToggleFullscreen, onToggleViewMode, onGoToFirst, onGoToLast, onScrollUp, onScrollDown, onScrollStart, onScrollEnd, onEngageReader],
   );
 
   useEffect(() => {

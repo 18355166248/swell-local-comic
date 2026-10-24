@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useComicViewer } from "../hooks/useComicViewer";
 import { useNativeFullscreen } from "../hooks/useNativeFullscreen";
@@ -14,6 +14,7 @@ import PageOverview from "./PageOverview";
 import type { PageImageFit } from "../utils/pageImageLayout";
 import type { ChapterSequenceItem, ReadingHistory } from "../types";
 import { normalizeLibraryPathId } from "../utils/libraryUtils";
+import { findInteractiveControl, isKeyOwningWidget } from "../utils/keyboardTarget";
 
 export default function ComicViewer() {
   const navigate = useNavigate();
@@ -37,6 +38,28 @@ export default function ComicViewer() {
   const persistCurrentReading = useCallback(() => {
     actions.persistHistory(imageViewerRef.current?.flushScrollPosition() ?? undefined);
   }, [actions]);
+  /** 把键盘焦点收回到阅读画面：方向键随后一定属于翻页，而不是在按钮之间“选中”。 */
+  const focusReadingSurface = useCallback(() => {
+    imageViewerRef.current?.focusSurface();
+  }, []);
+  /**
+   * 用鼠标点过工具按钮后，WebView 会把焦点留在那个按钮上。下一次按方向键时
+   * 按钮会进入 :focus-visible（出现蓝色描边，看起来像被选中），快捷键也会被
+   * 旧的「焦点在按钮上就忽略」逻辑吞掉。这里在点击动作完成后把焦点还给画面。
+   * 键盘触发的 click（detail === 0）保持原焦点，不干扰 Tab 导航。
+   */
+  const handleReaderClickCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    if (event.detail === 0) return;
+    if (document.querySelector("dialog[open]")) return;
+    if (isKeyOwningWidget(event.target)) return;
+    if (!findInteractiveControl(event.target)) return;
+    window.requestAnimationFrame(() => imageViewerRef.current?.focusSurface());
+  }, []);
+  /** 关闭页览后把焦点交还画面：dialog.close() 会把焦点还给「图片页览」按钮。 */
+  const closePageOverview = useCallback(() => {
+    setShowPageOverview(false);
+    window.requestAnimationFrame(() => imageViewerRef.current?.focusSurface());
+  }, []);
   const backToLibrary = useCallback(() => {
     persistCurrentReading();
     navigate("/");
@@ -135,7 +158,16 @@ export default function ComicViewer() {
     onScrollDown: () => scrollByPage(1),
     onScrollStart: () => scrollToEdge("start"),
     onScrollEnd: () => scrollToEdge("end"),
+    onEngageReader: focusReadingSurface,
   });
+
+  // 进入阅读区（打开/切换章节、切换阅读模式）后把键盘焦点放进画面，
+  // 保证刚进阅读区就能直接用方向键翻页。
+  useEffect(() => {
+    if (state.files.length === 0) return;
+    const frame = requestAnimationFrame(() => imageViewerRef.current?.focusSurface());
+    return () => cancelAnimationFrame(frame);
+  }, [state.folderPath, state.viewMode, state.files.length, state.isImageLoading]);
 
   const chapterSequence = (() => {
     const rawSequence = sessionStorage.getItem("comicChapterSequence");
@@ -274,7 +306,7 @@ export default function ComicViewer() {
   const rightRailMode = isImmersive ? (activeReaderEdge === "right" ? "reader-rail-active" : "") : "reader-rail-pinned";
 
   return (
-    <div className="reader-layout" onPointerMove={handleReaderPointerMove} onPointerLeave={() => setActiveReaderEdge(null)}>
+    <div className="reader-layout" onPointerMove={handleReaderPointerMove} onPointerLeave={() => setActiveReaderEdge(null)} onClickCapture={handleReaderClickCapture}>
       {!isFullscreen && isImmersive && totalCount > 0 && <div data-tauri-drag-region aria-hidden="true" className="reader-window-drag" />}
       {totalCount > 0 && (isImmersive || isFullscreen) && <button type="button" onClick={toggleImmersive} aria-pressed={isImmersive} className={`reader-immersive-toggle ${isImmersive ? `reader-immersive-toggle-auto ${activeReaderEdge ? "reader-immersive-toggle-visible" : ""}` : ""}`}>{isImmersive ? "退出沉浸" : "进入沉浸"}</button>}
       {!isFullscreen && (!isImmersive || totalCount === 0) && <header className="flex h-12 shrink-0 items-center gap-3 border-b border-white/10 bg-[#0c131c] pl-3 text-sm">
@@ -479,7 +511,7 @@ export default function ComicViewer() {
             {state.error}
           </div>
         )}
-        {showPageOverview && state.files.length > 0 && <PageOverview key={state.folderPath} files={state.files} imageUrls={state.imageUrls} currentIndex={state.currentIndex} onGoToPage={actions.goToPage} onClose={() => setShowPageOverview(false)} />}
+        {showPageOverview && state.files.length > 0 && <PageOverview key={state.folderPath} files={state.files} imageUrls={state.imageUrls} currentIndex={state.currentIndex} onGoToPage={actions.goToPage} onClose={closePageOverview} />}
       </div>
       </div>
     </div>

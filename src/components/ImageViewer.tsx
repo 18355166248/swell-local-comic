@@ -12,10 +12,13 @@ import type { ScrollPositionSnapshot } from "../utils/readerPosition";
 import type { ReaderImageSize, ReaderImageState } from "../utils/readerImageResources";
 import { getPageImageLayout } from "../utils/pageImageLayout";
 import type { PageImageFit } from "../utils/pageImageLayout";
+import { isKeyOwningWidget } from "../utils/keyboardTarget";
 
 export interface ImageViewerHandle {
   flushScrollPosition: () => ScrollPositionSnapshot | null;
   cancelRestoration: () => void;
+  /** 把键盘焦点交回当前阅读画面（分页/滚动各自的可聚焦容器）。 */
+  focusSurface: () => void;
 }
 
 interface ImageViewerProps {
@@ -102,6 +105,22 @@ export default function ImageViewer({
   const markImageFailed = useCallback((url: string) => {
     setFailedUrls((current) => new Set(current).add(url));
   }, []);
+  /**
+   * 把键盘焦点放到当前阅读画面上。
+   * 分页/滚动的可视区都是 tabIndex=0 的容器，焦点落在它们身上时方向键才“属于”阅读器；
+   * 焦点若留在工具按钮上，方向键既不翻页、又会把按钮画出选中描边。
+   */
+  const focusSurface = useCallback(() => {
+    const element = viewMode === "scroll" ? scrollContainerRef.current : pageContainerRef.current;
+    if (!element) return;
+    // 弹窗打开时不要抢焦点
+    if (document.querySelector("dialog[open]")) return;
+    const active = document.activeElement;
+    if (active === element) return;
+    // 用户正在设置面板里输入/拖动时不要抢焦点
+    if (isKeyOwningWidget(active)) return;
+    element.focus({ preventScroll: true });
+  }, [viewMode, scrollContainerRef]);
   /** 判定「已到底部」的阈值：距离底部小于等于此像素视为到底 */
   const AT_BOTTOM_THRESHOLD = 5;
 
@@ -176,8 +195,9 @@ export default function ImageViewer({
     viewMode, scrollRatio, scrollContainerRef,
     onLoadNextFolderAtBottom: onLoadNextFolder,
     isLoading, onScrollIntent: cancelPendingRestore,
+    onEngageReader: focusSurface,
   });
-  useImperativeHandle(readerRef, () => ({ flushScrollPosition, cancelRestoration: cancelPendingRestore }), [flushScrollPosition, cancelPendingRestore]);
+  useImperativeHandle(readerRef, () => ({ flushScrollPosition, cancelRestoration: cancelPendingRestore, focusSurface }), [flushScrollPosition, cancelPendingRestore, focusSurface]);
   useEffect(() => {
     if (viewMode !== "scroll" || isLoading) {
       lastJumpRef.current = null;
