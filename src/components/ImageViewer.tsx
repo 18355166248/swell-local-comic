@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
+import type { Ref } from "react";
 import { DEFAULT_SCROLL_RATIO } from "../utils/fileUtils";
 import type { ViewMode } from "../types";
 import { useImageGroups } from "../hooks/useImageGroups";
@@ -7,8 +8,16 @@ import { FullscreenOverlay } from "./FullscreenOverlay";
 import { useScrollKeyboard } from "../hooks/useScrollKeyboard";
 import { useScrollPosition } from "../hooks/useScrollPosition";
 import { useCurrentImageDetection } from "../hooks/useCurrentImageDetection";
+import type { ScrollPositionSnapshot } from "../utils/readerPosition";
+import type { ReaderImageSize, ReaderImageState } from "../utils/readerImageResources";
+
+export interface ImageViewerHandle {
+  flushScrollPosition: () => ScrollPositionSnapshot | null;
+  cancelRestoration: () => void;
+}
 
 interface ImageViewerProps {
+  readerRef?: Ref<ImageViewerHandle>;
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   imageUrl: string;
   currentFileName?: string;
@@ -17,6 +26,11 @@ interface ImageViewerProps {
   viewMode: ViewMode;
   imageWidth: number;
   imageUrls: string[];
+  scrollImageStates?: ReaderImageState[];
+  scrollImageSizes?: (ReaderImageSize | null)[];
+  isLayoutReady?: boolean;
+  isRestoringScrollPosition?: boolean;
+  onRestorationEnd?: () => void;
   files: Array<{ name: string; path: string }>;
   scrollRatio?: number; // 滚动距离比例，默认0.35（约30%视口）
   scrollPosition?: number; // 初始滚动位置
@@ -39,6 +53,7 @@ interface ImageViewerProps {
 }
 
 export default function ImageViewer({
+  readerRef,
   scrollContainerRef,
   imageUrl,
   currentFileName,
@@ -47,6 +62,11 @@ export default function ImageViewer({
   viewMode,
   imageWidth,
   imageUrls,
+  scrollImageStates = [],
+  scrollImageSizes = [],
+  isLayoutReady = true,
+  isRestoringScrollPosition = false,
+  onRestorationEnd,
   files,
   scrollRatio = DEFAULT_SCROLL_RATIO,
   scrollPosition,
@@ -117,21 +137,15 @@ export default function ImageViewer({
     viewMode
   );
 
-  const { handleScrollUp, handleScrollDown } = useScrollKeyboard({
-    viewMode,
-    scrollRatio,
-    scrollContainerRef,
-    onLoadNextFolderAtBottom: onLoadNextFolder,
-    isLoading,
-  });
-
-  useScrollPosition({
+  const { flushScrollPosition, cancelScrollRestoration } = useScrollPosition({
     viewMode,
     restoreKey: files[0]?.path ?? "",
     scrollPosition: scrollTargetIndex === null ? scrollPosition : undefined,
     onScrollPositionChange,
     imageUrls,
     isLoading,
+    isLayoutReady,
+    onRestorationEnd,
     scrollContainerRef,
   });
 
@@ -144,30 +158,42 @@ export default function ImageViewer({
   });
 
   const lastJumpRef = useRef<string | null>(null);
+  const cancelPendingRestore = useCallback(() => {
+    if (scrollTargetIndex !== null) lastJumpRef.current = `${files[0]?.path}:${scrollTargetIndex}:${imagesPerGroup}:${scrollJumpRequest}:done`;
+    cancelScrollRestoration();
+  }, [cancelScrollRestoration, files, imagesPerGroup, scrollJumpRequest, scrollTargetIndex]);
+  const { handleScrollUp, handleScrollDown } = useScrollKeyboard({
+    viewMode, scrollRatio, scrollContainerRef,
+    onLoadNextFolderAtBottom: onLoadNextFolder,
+    isLoading, onScrollIntent: cancelPendingRestore,
+  });
+  useImperativeHandle(readerRef, () => ({ flushScrollPosition, cancelRestoration: cancelPendingRestore }), [flushScrollPosition, cancelPendingRestore]);
   useEffect(() => {
-    if (viewMode !== "scroll") {
+    if (viewMode !== "scroll" || isLoading) {
       lastJumpRef.current = null;
       return;
     }
-    if (scrollTargetIndex === null || isLoading || imageUrls.length !== files.length) return;
-    const key = `${files[0]?.path}:${scrollTargetIndex}:${imagesPerGroup}:${scrollJumpRequest}`;
-    if (lastJumpRef.current === key) return;
+    const targetIndex = scrollTargetIndex ?? (!isLayoutReady && isRestoringScrollPosition ? currentIndex : null);
+    if (targetIndex === null || imageUrls.length !== files.length) return;
+    if (!isLayoutReady && !imageUrls[targetIndex] && scrollImageStates[targetIndex] !== "error") return;
+    const key = `${files[0]?.path}:${targetIndex}:${imagesPerGroup}:${scrollJumpRequest}`;
+    const phase = isLayoutReady ? "done" : "preview";
+    if (lastJumpRef.current === `${key}:done` || lastJumpRef.current === `${key}:${phase}`) return;
     const container = scrollContainerRef.current;
     if (!container) return;
-    lastJumpRef.current = key;
-    const groupIndex = Math.floor(scrollTargetIndex / imagesPerGroup);
+    const groupIndex = Math.floor(targetIndex / imagesPerGroup);
     const jump = () => {
       const group = container.querySelector<HTMLElement>(`[data-image-group="${groupIndex}"]`);
       if (!group) return;
       container.scrollTop += group.getBoundingClientRect().top - container.getBoundingClientRect().top;
+      lastJumpRef.current = `${key}:${phase}`;
+      if (isLayoutReady) onRestorationEnd?.();
     };
     const frame = requestAnimationFrame(jump);
-    const timer = window.setTimeout(jump, 500);
     return () => {
       cancelAnimationFrame(frame);
-      window.clearTimeout(timer);
     };
-  }, [viewMode, scrollTargetIndex, scrollJumpRequest, isLoading, imageUrls.length, files, imagesPerGroup, scrollContainerRef]);
+  }, [viewMode, scrollTargetIndex, scrollJumpRequest, isLoading, isLayoutReady, imageUrls, scrollImageStates, isRestoringScrollPosition, currentIndex, files, imagesPerGroup, scrollContainerRef, onRestorationEnd]);
 
   // 向下滚动：若已在底部则加载下一文件夹，否则执行滚动（需用户主动点击/S键触发）
   const handleScrollDownClick = useCallback(() => {
@@ -235,6 +261,9 @@ export default function ImageViewer({
           role="region"
           aria-label="滚动阅读区域"
           tabIndex={0}
+          onWheelCapture={cancelPendingRestore}
+          onPointerDown={cancelPendingRestore}
+          onKeyDownCapture={(event) => { if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " ", "w", "s"].includes(event.key)) cancelPendingRestore(); }}
           className="h-full overflow-y-auto overflow-x-hidden scroll-mode-container"
           style={{
             pointerEvents: isLoading ? "none" : "auto",
@@ -256,14 +285,17 @@ export default function ImageViewer({
               >
                 {group.urls.map((url, imgIndex) => {
                   const fileIndex = groupIndex * imagesPerGroup + imgIndex;
-                  if (!url || failedUrls.has(url)) {
+                  const size = scrollImageSizes[fileIndex];
+                  const failed = scrollImageStates[fileIndex] === "error" || failedUrls.has(url);
+                  if (!url && !failed) return <div key={imgIndex} role="status" className="flex items-center justify-center bg-[#111a24] text-xs text-slate-500" style={{ width: `${100 / group.urls.length}%`, aspectRatio: size ? `${size.width} / ${size.height}` : "2 / 3" }}>正在加载第 {fileIndex + 1} 页…</div>;
+                  if (failed) {
                     return (
                       <button
                         key={imgIndex}
                         type="button"
                         onClick={() => onRetryImage?.(fileIndex)}
                         className="flex min-h-[50vh] items-center justify-center bg-gray-800 px-4 text-sm text-gray-200 hover:bg-gray-700"
-                        style={{ width: `${100 / group.urls.length}%` }}
+                        style={{ width: `${100 / group.urls.length}%`, aspectRatio: size ? `${size.width} / ${size.height}` : "2 / 3" }}
                       >
                         {group.files[imgIndex]?.name || `第 ${fileIndex + 1} 页`} 加载失败，点击重试
                       </button>
@@ -276,6 +308,8 @@ export default function ImageViewer({
                       alt={group.files[imgIndex]?.name || `图片 ${fileIndex + 1}`}
                       className="select-none"
                       decoding="async"
+                      width={size?.width}
+                      height={size?.height}
                       onError={() => markImageFailed(url)}
                       style={{
                         width: `${100 / group.urls.length}%`,
@@ -294,28 +328,28 @@ export default function ImageViewer({
         {!isFullscreen && (
         <div className="absolute right-6 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-10">
           <button
-            onClick={handleScrollUp}
-            className="scroll-btn bg-white/80 hover:bg-white border border-gray-300 rounded-full w-12 h-12 flex items-center justify-center shadow-lg transition-all hover:shadow-xl active:scale-95"
+            onClick={() => { cancelPendingRestore(); handleScrollUp(); }}
+            className="scroll-btn bg-[#152130]/90 hover:bg-[#243750] border border-white/15 rounded-full w-10 h-10 flex items-center justify-center shadow-lg transition-colors"
             aria-label="向上滚动"
           >
-            <ChevronUpIcon size={24} className="text-gray-700" />
+            <ChevronUpIcon size={20} className="text-slate-200" />
           </button>
           <button
-            onClick={handleScrollDownClick}
-            className="scroll-btn bg-white/80 hover:bg-white border border-gray-300 rounded-full w-12 h-12 flex items-center justify-center shadow-lg transition-all hover:shadow-xl active:scale-95"
+            onClick={() => { cancelPendingRestore(); handleScrollDownClick(); }}
+            className="scroll-btn bg-[#152130]/90 hover:bg-[#243750] border border-white/15 rounded-full w-10 h-10 flex items-center justify-center shadow-lg transition-colors"
             aria-label="向下滚动"
           >
-            <ChevronDownIcon size={24} className="text-gray-700" />
+            <ChevronDownIcon size={20} className="text-slate-200" />
           </button>
           {onLoadNextFolder && (
             <button
               onClick={onLoadNextFolder}
               disabled={isLoading}
-              className="scroll-btn bg-white/80 hover:bg-white border border-gray-300 rounded-full w-12 h-12 flex items-center justify-center shadow-lg transition-all hover:shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="scroll-btn bg-[#152130]/90 hover:bg-[#243750] border border-white/15 rounded-full w-10 h-10 flex items-center justify-center shadow-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="下一文件夹 (D)"
               title="下一文件夹 (D)"
             >
-              <NextChapterIcon size={24} className="text-gray-700" />
+              <NextChapterIcon size={20} className="text-slate-200" />
             </button>
           )}
         </div>

@@ -1,3 +1,5 @@
+import type { ReaderImageSize, ReaderImageState } from "../utils/readerImageResources";
+
 export interface ComicFile {
   name: string;
   path: string;
@@ -13,6 +15,11 @@ export interface ComicViewerState {
   viewMode: ViewMode;
   imageWidth: number;
   imageUrls: string[];
+  scrollImageStates: ReaderImageState[];
+  scrollImageSizes: (ReaderImageSize | null)[];
+  isBackgroundLoading: boolean;
+  isScrollLayoutReady: boolean;
+  isRestoringScrollPosition: boolean;
   folderName: string;
   folderPath: string;
   scrollPosition?: number;

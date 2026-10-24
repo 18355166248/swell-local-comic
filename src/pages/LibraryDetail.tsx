@@ -21,8 +21,15 @@ import ChapterPreview from "../components/ChapterPreview";
 import { ChevronDownIcon, ChevronRightIcon } from "../components/Icons";
 import { buildLibraryPreviewIndex, filterLibraryChapters, getSuggestedChapter } from "../utils/libraryUtils";
 import type { ChapterStatus, DirectoryProgress } from "../utils/libraryUtils";
-
-const CHAPTER_PAGE_SIZE = 200;
+import { useLibraryBrowseState } from "../hooks/useLibraryBrowseState";
+import {
+  CHAPTER_PAGE_SIZE,
+  DIRECTORY_PAGE_SIZE,
+  filterDirectoryTree,
+  getDirectoryBranchPaths,
+  reconcileLibraryBrowseState,
+} from "../utils/libraryBrowseState";
+import { useReadingSessionEntry } from "../hooks/useReadingSessionEntry";
 
 const statusLabel = {
   unread: "未读",
@@ -86,11 +93,14 @@ interface DirectoryNodeProps {
   selectedPaths: Set<string>;
   expandedPaths: Set<string>;
   revealedCollapsedGroups: Set<string>;
+  childLimits: Record<string, number>;
+  collapseReadGroups: boolean;
   onOpenChapter: (path: string) => void;
   onPreviewChapter: (path: string) => void;
   onToggleChapter: (path: string) => void;
   onToggleExpand: (path: string) => void;
   onToggleCollapsedGroup: (path: string) => void;
+  onLoadChildren: (path: string) => void;
   onOpenContextMenu: (path: string, event: MouseEvent<HTMLElement>) => void;
   level?: number;
 }
@@ -101,15 +111,18 @@ function DirectoryNode({
   selectedPaths,
   expandedPaths,
   revealedCollapsedGroups,
+  childLimits,
+  collapseReadGroups,
   onOpenChapter,
   onPreviewChapter,
   onToggleChapter,
   onToggleExpand,
   onToggleCollapsedGroup,
+  onLoadChildren,
   onOpenContextMenu,
   level = 0,
 }: DirectoryNodeProps) {
-  const [childLimit, setChildLimit] = useState(100);
+  const childLimit = childLimits[node.path] ?? DIRECTORY_PAGE_SIZE;
   const history = node.readable ? index.historyByPath.get(normalizeLibraryPathId(node.path)) : undefined;
   const progress = index.progressByPath.get(node.path);
   const status = getChapterStatus(history);
@@ -117,7 +130,7 @@ function DirectoryNode({
   const isExpanded = expandedPaths.has(node.path);
   const hasChildren = node.children.length > 0;
   const collapsedGroupKey = `${node.path}::leading-read`;
-  const leadingReadCount = hasChildren
+  const leadingReadCount = hasChildren && collapseReadGroups
     ? getLeadingFullyReadChildCount(node.children, index.progressByPath)
     : 0;
   const isCollapsedGroupRevealed = revealedCollapsedGroups.has(collapsedGroupKey);
@@ -127,12 +140,10 @@ function DirectoryNode({
       : node.children;
 
   return (
-    <div className="space-y-2">
+    <div>
       <div
-        className={`flex items-center justify-between gap-3 rounded-xl border bg-[#111821] px-4 py-3 ${
-          isSelected ? "border-blue-500/80" : "border-white/8"
-        } ${node.readable ? "hover:border-blue-500/70" : ""}`}
-        style={{ marginLeft: `${Math.min(level, 5) * 14}px` }}
+        className={`flex min-h-14 items-center justify-between gap-3 border-b border-white/6 px-3 py-2.5 transition-colors ${isSelected ? "bg-blue-500/10" : "hover:bg-white/[0.025]"}`}
+        style={{ paddingLeft: `${12 + Math.min(level, 5) * 16}px` }}
         onContextMenu={(event) => {
           if (node.readable) onOpenContextMenu(node.path, event);
         }}
@@ -170,7 +181,7 @@ function DirectoryNode({
 
           {node.readable ? (
             <span
-              className={`inline-flex h-6 w-16 shrink-0 items-center justify-center rounded px-2 py-1 text-xs ${statusClass[status]}`}
+              className={`inline-flex w-12 shrink-0 items-center justify-center rounded py-1 text-xs ${statusClass[status]}`}
             >
               {statusLabel[status]}
             </span>
@@ -180,7 +191,7 @@ function DirectoryNode({
 
           <button type="button" onClick={() => node.readable ? onOpenChapter(node.path) : onToggleExpand(node.path)} className="min-w-0 flex-1 rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-400" aria-label={node.readable ? `阅读 ${node.name}` : `${isExpanded ? "折叠" : "展开"} ${node.name}`} aria-expanded={hasChildren && !node.readable ? isExpanded : undefined}>
             <div className="flex items-center gap-2">
-              <span className="truncate font-medium" title={node.path}>{node.name}</span>
+              <span className="truncate text-sm font-medium" title={node.path}>{node.name}</span>
             </div>
             <div className="mt-1 text-xs text-gray-500">
               {node.readable
@@ -193,18 +204,18 @@ function DirectoryNode({
         {node.readable && (
           <div className="flex shrink-0 items-center gap-3">
             <span className="hidden text-xs text-gray-400 sm:inline">{getHistoryProgressText(history)}</span>
-            <button type="button" onClick={() => onPreviewChapter(node.path)} aria-label={`预览 ${node.name}`} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-blue-200 hover:border-blue-400/50 hover:bg-blue-500/10 focus-visible:outline-2 focus-visible:outline-blue-400">预览</button>
+            <button type="button" onClick={() => onPreviewChapter(node.path)} aria-label={`预览 ${node.name}`} className="ui-button text-xs text-blue-200">预览</button>
           </div>
         )}
       </div>
 
       {isExpanded && (
-        <div className="space-y-2">
+        <div>
           {leadingReadCount > 0 && (
             <button
               type="button"
-              className="flex items-center justify-between gap-4 rounded-xl border border-emerald-900/40 bg-emerald-950/20 px-4 py-2 text-left text-sm text-emerald-200 transition-colors hover:border-emerald-700/60 hover:bg-emerald-950/30"
-              style={{ marginLeft: `${Math.min(level + 1, 5) * 14}px`, width: `calc(100% - ${Math.min(level + 1, 5) * 14}px)` }}
+              className="flex w-full items-center justify-between gap-4 border-b border-white/6 bg-emerald-950/10 py-2 pr-3 text-left text-xs text-emerald-200/80 transition-colors hover:bg-emerald-950/25"
+              style={{ paddingLeft: `${12 + Math.min(level + 1, 5) * 16}px` }}
               aria-expanded={isCollapsedGroupRevealed}
               onClick={() => onToggleCollapsedGroup(collapsedGroupKey)}
             >
@@ -227,16 +238,19 @@ function DirectoryNode({
               selectedPaths={selectedPaths}
               expandedPaths={expandedPaths}
               revealedCollapsedGroups={revealedCollapsedGroups}
+              childLimits={childLimits}
+              collapseReadGroups={collapseReadGroups}
               onOpenChapter={onOpenChapter}
               onPreviewChapter={onPreviewChapter}
               onToggleChapter={onToggleChapter}
               onToggleExpand={onToggleExpand}
               onToggleCollapsedGroup={onToggleCollapsedGroup}
+              onLoadChildren={onLoadChildren}
               onOpenContextMenu={onOpenContextMenu}
               level={level + 1}
             />
           ))}
-          {visibleChildren.length > childLimit && <button type="button" onClick={() => setChildLimit((value) => value + 100)} className="mx-auto block rounded-xl border border-white/10 px-4 py-2.5 text-sm text-blue-200 hover:bg-blue-500/10">加载更多目录（{Math.min(childLimit, visibleChildren.length)} / {visibleChildren.length}）</button>}
+          {visibleChildren.length > childLimit && <button type="button" onClick={() => onLoadChildren(node.path)} className="ui-button mx-auto my-3 block text-blue-200">加载更多目录（{Math.min(childLimit, visibleChildren.length)} / {visibleChildren.length}）</button>}
         </div>
       )}
     </div>
@@ -244,61 +258,55 @@ function DirectoryNode({
 }
 
 export default function LibraryDetail() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const rootId = searchParams.get("root");
-  const [item, setItem] = useState<LibraryItem | null>(null);
-  const [scan, setScan] = useState<ComicLibraryScanResult | null>(null);
-  const [histories, setHistories] = useState<ReadingHistory[]>([]);
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<ChapterStatus | "all">("all");
-  const [view, setView] = useState<"tree" | "list">("tree");
+  return <LibraryDetailContent key={rootId ?? "missing-library"} rootId={rootId} />;
+}
+
+function LibraryDetailContent({ rootId }: { rootId: string | null }) {
+  const navigate = useNavigate();
+  const [item] = useState<LibraryItem | null>(() => getLibraryItems().find((candidate) => candidate.id === rootId) ?? null);
+  const [scanState, setScanState] = useState<{
+    scan: ComicLibraryScanResult | null;
+    isLoading: boolean;
+    error: string | null;
+  }>(() => ({ scan: null, isLoading: Boolean(item), error: item ? null : "未找到这个书库条目。" }));
+  const { scan, isLoading, error } = scanState;
+  const [histories, setHistories] = useState<ReadingHistory[]>(() => getAllHistory());
+  const [browse, setBrowse] = useLibraryBrowseState(rootId ?? "missing-library");
+  const { query, statusFilter, view, visibleChapterCount } = browse;
   const [refreshCount, setRefreshCount] = useState(0);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { openingPath, error: readingError, run: openReading } = useReadingSessionEntry();
+  const openError = readingError?.message;
   const [selectedChapterPaths, setSelectedChapterPaths] = useState<Set<string>>(
     () => new Set(),
   );
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set());
-  const [revealedCollapsedGroups, setRevealedCollapsedGroups] = useState<Set<string>>(
-    () => new Set(),
-  );
-  const [visibleChapterCount, setVisibleChapterCount] = useState(CHAPTER_PAGE_SIZE);
   const [contextMenu, setContextMenu] = useState<ChapterContextMenu | null>(null);
   const breadcrumbs = getLibraryBreadcrumb(item?.name ?? "目录预览");
 
   useEffect(() => {
-    const libraryItem = getLibraryItems().find((candidate) => candidate.id === rootId);
-    setItem(libraryItem ?? null);
-    setHistories(getAllHistory());
-    setScan(null);
-    setPreviewPath(null);
-    setQuery("");
-    setStatusFilter("all");
-
-    if (!libraryItem) {
-      setIsLoading(false);
-      setError("未找到这个书库条目。");
-      return;
-    }
-
+    if (!item) return;
     let cancelled = false;
     const load = async () => {
-      setIsLoading(true);
-      setError(null);
       try {
-        const result = await scanComicLibrary(libraryItem.rootPath);
+        const result = await scanComicLibrary(item.rootPath);
         if (!cancelled) {
-          setScan(result);
-          touchLibraryItem(libraryItem.id);
+          const nextHistories = getAllHistory();
+          const nextIndex = buildLibraryPreviewIndex(result.tree, nextHistories);
+          setHistories(nextHistories);
+          setBrowse((current) => reconcileLibraryBrowseState(current, result.tree, [...buildAutoExpandedPaths(result.tree, nextIndex.progressByPath, true)]));
+          const validPaths = new Set(result.chapters.map((chapter) => chapter.path));
+          setSelectedChapterPaths((current) => new Set([...current].filter((path) => validPaths.has(path))));
+          setPreviewPath((current) => current && validPaths.has(current) ? current : null);
+          setScanState({ scan: result, isLoading: false, error: null });
+          touchLibraryItem(item.id);
         }
       } catch (scanError) {
         if (!cancelled) {
-          setError(typeof scanError === "string" ? scanError : scanError instanceof Error ? scanError.message : "扫描目录失败。");
+          const message = typeof scanError === "string" ? scanError : scanError instanceof Error ? scanError.message : "扫描目录失败。";
+          setScanState((current) => ({ ...current, isLoading: false, error: message }));
         }
-      } finally {
-        if (!cancelled) setIsLoading(false);
       }
     };
 
@@ -306,7 +314,7 @@ export default function LibraryDetail() {
     return () => {
       cancelled = true;
     };
-  }, [rootId, refreshCount]);
+  }, [item, refreshCount, setBrowse]);
 
   const index = useMemo(() => scan ? buildLibraryPreviewIndex(scan.tree, histories) : null, [scan, histories]);
 
@@ -329,17 +337,26 @@ export default function LibraryDetail() {
   }, [scan, selectedChapterPaths]);
 
   const isSearching = query.trim().length > 0;
-  const showList = isSearching || statusFilter !== "all" || view === "list";
+  const hasFilters = isSearching || statusFilter !== "all";
+  const showList = view === "list";
+  const filteredTree = useMemo(() => scan
+    ? hasFilters ? filterDirectoryTree(scan.tree, new Set(filteredChapters.map((chapter) => chapter.path))) : scan.tree
+    : null, [scan, hasFilters, filteredChapters]);
+  const treeIndex = useMemo(() => filteredTree ? buildLibraryPreviewIndex(filteredTree, histories) : null, [filteredTree, histories]);
+  const expandedPaths = useMemo(() => new Set(hasFilters && filteredTree
+    ? getDirectoryBranchPaths(filteredTree).filter((path) => !browse.filterCollapsedPaths.includes(path))
+    : browse.expandedPaths ?? []), [hasFilters, filteredTree, browse.filterCollapsedPaths, browse.expandedPaths]);
+  const revealedCollapsedGroups = useMemo(() => new Set(browse.revealedCollapsedGroups), [browse.revealedCollapsedGroups]);
 
-  useEffect(() => {
-    setSelectedChapterPaths(new Set());
-    setExpandedPaths(
-      scan && index ? buildAutoExpandedPaths(scan.tree, index.progressByPath, true) : new Set(),
-    );
-    setRevealedCollapsedGroups(new Set());
-    setVisibleChapterCount(CHAPTER_PAGE_SIZE);
+  const updateFilters = (nextQuery: string, nextStatus: ChapterStatus | "all") => {
+    setBrowse((current) => ({ ...current, query: nextQuery, statusFilter: nextStatus, visibleChapterCount: CHAPTER_PAGE_SIZE, filterCollapsedPaths: [] }));
+  };
+
+  const refreshDirectory = () => {
     setContextMenu(null);
-  }, [index, scan]);
+    setScanState((current) => ({ ...current, isLoading: true, error: null }));
+    setRefreshCount((current) => current + 1);
+  };
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -374,27 +391,27 @@ export default function LibraryDetail() {
   };
 
   const toggleExpanded = (path: string) => {
-    setExpandedPaths((current) => {
-      const next = new Set(current);
-      if (next.has(path)) {
-        next.delete(path);
-      } else {
-        next.add(path);
-      }
-      return next;
+    setBrowse((current) => {
+      const key = hasFilters ? "filterCollapsedPaths" : "expandedPaths";
+      const next = new Set(current[key] ?? []);
+      if (next.has(path)) next.delete(path); else next.add(path);
+      return { ...current, [key]: [...next] };
     });
   };
 
   const toggleCollapsedGroup = (path: string) => {
-    setRevealedCollapsedGroups((current) => {
-      const next = new Set(current);
-      if (next.has(path)) {
-        next.delete(path);
-      } else {
-        next.add(path);
-      }
-      return next;
+    setBrowse((current) => {
+      const next = new Set(current.revealedCollapsedGroups);
+      if (next.has(path)) next.delete(path); else next.add(path);
+      return { ...current, revealedCollapsedGroups: [...next] };
     });
+  };
+
+  const loadMoreChildren = (path: string) => {
+    setBrowse((current) => ({
+      ...current,
+      childLimits: { ...current.childLimits, [path]: (current.childLimits[path] ?? DIRECTORY_PAGE_SIZE) + DIRECTORY_PAGE_SIZE },
+    }));
   };
 
   const clearSelection = () => {
@@ -441,32 +458,21 @@ export default function LibraryDetail() {
     if (!scan) return;
     const chapter = scan.chapters.find((candidate) => candidate.path === chapterPath);
     if (!chapter) return;
-
-    const sequence = scan.chapters.map((candidate) => ({
-      name: candidate.name,
-      path: candidate.path,
-    }));
-    sessionStorage.setItem("comicChapterSequence", JSON.stringify(sequence));
-
     const history = index?.historyByPath.get(normalizeLibraryPathId(chapter.path));
-    if (history?.files.length) {
-      sessionStorage.setItem("continueReading", JSON.stringify(history));
-      sessionStorage.setItem("currentFolderPath", history.folderPath);
-      navigate("/viewer?fromContinueReading=true");
-      return;
-    }
-
-    sessionStorage.setItem(
-      "openComicFolder",
-      JSON.stringify({ name: chapter.name, path: chapter.path }),
-    );
-    navigate("/viewer?openFolder=true");
+    return openReading(history ?? {
+      folderName: chapter.name,
+      folderPath: chapter.path,
+      files: [],
+      currentIndex: 0,
+      totalFiles: chapter.imageCount,
+      lastReadTime: Date.now(),
+    }, { chapters: scan.chapters });
   };
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6">
-      <div className="mb-4">
-        <div className="mb-2 flex items-center gap-2 text-sm text-gray-500">
+    <main className="app-page space-y-4" aria-busy={isLoading}>
+      <div>
+        <nav aria-label="当前位置" className="mb-2 flex items-center gap-2 text-xs text-gray-500">
           {breadcrumbs.map((crumb, index) => (
             <span key={`${crumb.label}-${index}`} className="flex items-center gap-2">
               {crumb.to ? (
@@ -482,79 +488,81 @@ export default function LibraryDetail() {
               {index < breadcrumbs.length - 1 && <span>/</span>}
             </span>
           ))}
-        </div>
-        <h1 className="truncate text-2xl font-semibold">{item?.name ?? "目录预览"}</h1>
-        <p className="mt-1 truncate text-sm text-gray-400" title={item?.rootPath}>{item?.rootPath}</p>
+        </nav>
+        <h1 className="page-heading truncate">{item?.name ?? "目录预览"}</h1>
+        <p className="mt-1.5 truncate text-xs text-gray-500" title={item?.rootPath}>{item?.rootPath}</p>
       </div>
 
-      {isLoading ? (
-        <div role="status" className="rounded-2xl border border-white/8 bg-[#111821] p-8 text-center text-gray-300">
+      {openingPath && <p role="status" className="text-xs text-blue-200">正在打开章节…</p>}
+      {openError && <p role="alert" className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-200">{openError}</p>}
+      {scan && isLoading && <p role="status" className="text-xs text-gray-400">正在刷新目录，当前浏览位置会保留…</p>}
+      {scan && error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-200"><p>刷新失败，仍显示上次扫描结果。{error}</p><button type="button" onClick={refreshDirectory} className="ui-button shrink-0">重新扫描</button></div>}
+      {isLoading && !scan ? (
+        <div role="status" className="surface-panel p-8 text-center text-sm text-gray-300">
           正在扫描目录...
         </div>
-      ) : error ? (
+      ) : error && !scan ? (
         <div role="alert" className="rounded-2xl border border-red-900/60 bg-red-950/30 p-8 text-center text-red-200">
           <p>{error}</p>
-          <button type="button" onClick={() => setRefreshCount((value) => value + 1)} className="mt-4 rounded-xl border border-red-400/40 px-4 py-2 text-sm hover:bg-red-500/10">重新扫描</button>
+          <button type="button" onClick={refreshDirectory} className="ui-button mt-4">重新扫描</button>
         </div>
       ) : scan && scan.chapters.length === 0 ? (
-        <div className="rounded-2xl border border-white/8 bg-[#111821] p-8 text-center text-gray-300">
+        <div className="surface-panel p-8 text-center text-sm text-gray-300">
           未找到可阅读章节。请确认目录中包含 JPG、PNG、GIF、WebP 或 BMP 图片。
-          <button type="button" onClick={() => setRefreshCount((value) => value + 1)} className="mx-auto mt-4 block rounded-xl border border-white/15 px-4 py-2 text-sm hover:bg-white/5">重新扫描</button>
+          <button type="button" onClick={refreshDirectory} className="ui-button mx-auto mt-4 block">重新扫描</button>
         </div>
       ) : scan && index ? (
         <>
-          <section aria-label="阅读概览" className="mb-3 rounded-2xl border border-blue-400/15 bg-gradient-to-br from-blue-500/10 to-[#111821] p-4">
-            <div className="flex flex-wrap items-start justify-between gap-5">
+          <section aria-label="阅读概览" className="border-b border-white/8 pb-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-3">
-                  <h2 className="text-sm font-medium text-gray-200">阅读进度</h2>
+                  <h2 className="text-sm font-medium text-gray-200">章节进度</h2>
                   <span className="text-xs text-gray-400">已读 {index.totals.read} / {index.totals.total} 章</span>
                 </div>
-                <div role="progressbar" aria-label="已读章节比例" aria-valuenow={index.totals.read} aria-valuemin={0} aria-valuemax={index.totals.total} className="mt-3 h-1.5 max-w-lg overflow-hidden rounded-full bg-white/10">
+                <div role="progressbar" aria-label="已读章节比例" aria-valuenow={index.totals.read} aria-valuemin={0} aria-valuemax={index.totals.total} className="mt-2 h-1 max-w-sm overflow-hidden rounded-full bg-white/10">
                   <div className="h-full rounded-full bg-blue-400 transition-[width]" style={{width: `${index.totals.total ? index.totals.read / index.totals.total * 100 : 0}%`}} />
                 </div>
-                <p className="mt-3 text-xs text-gray-400">{index.totals.reading} 章阅读中 · {index.totals.total - index.totals.read - index.totals.reading} 章未读 · 共 {scan.chapters.reduce((sum, chapter) => sum + chapter.imageCount, 0).toLocaleString()} 张图片</p>
+                <p className="mt-2 text-xs text-gray-500">{index.totals.reading} 章阅读中 · 共 {scan.chapters.reduce((sum, chapter) => sum + chapter.imageCount, 0).toLocaleString()} 张图片</p>
               </div>
               <div className="flex max-w-full items-center gap-3">
                 {suggestedChapter ? (
-                  <button type="button" onClick={() => openChapter(suggestedChapter.path)} className="min-w-0 rounded-xl bg-blue-500 px-5 py-2.5 text-left text-sm font-medium hover:bg-blue-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300">
-                    <span className="block">{index.historyByPath.has(normalizeLibraryPathId(suggestedChapter.path)) ? "继续阅读" : "开始下一章"}</span>
-                    <span className="mt-0.5 block max-w-48 truncate text-xs font-normal text-blue-100" title={suggestedChapter.relativePath}>{suggestedChapter.name}</span>
+                  <button type="button" disabled={openingPath !== null} onClick={() => void openChapter(suggestedChapter.path)} className="ui-button ui-button-primary flex min-w-0 items-center gap-2 text-left">
+                    <span>{index.historyByPath.has(normalizeLibraryPathId(suggestedChapter.path)) ? "继续阅读" : "开始下一章"}</span>
+                    <span className="hidden max-w-40 truncate text-xs font-normal text-blue-100 sm:inline" title={suggestedChapter.relativePath}>{suggestedChapter.name}</span>
                   </button>
                 ) : <span className="text-sm text-emerald-300">已读完全部章节</span>}
-                <button type="button" onClick={() => setRefreshCount((value) => value + 1)} title="重新扫描磁盘中的章节" className="rounded-xl border border-white/15 px-3 py-2.5 text-sm text-gray-300 hover:bg-white/5">刷新目录</button>
+                <button type="button" onClick={refreshDirectory} disabled={isLoading} title="重新扫描磁盘中的章节" className="ui-button">{isLoading ? "扫描中…" : "刷新目录"}</button>
               </div>
             </div>
           </section>
-          <section className="mb-3 rounded-2xl border border-white/8 bg-[#111821] p-3">
-            <div className="flex flex-wrap items-center justify-between gap-4">
+          <section className="surface-panel p-3" aria-label="查找章节">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <input
                   type="search"
                   aria-label="搜索章节名或路径"
                   value={query}
                   onChange={(event) => {
-                    setQuery(event.target.value);
-                    setVisibleChapterCount(CHAPTER_PAGE_SIZE);
+                    updateFilters(event.target.value, statusFilter);
                   }}
                   placeholder="搜索章节名或路径"
-                  className="w-full max-w-xl rounded-xl border border-white/8 bg-[#0c1117] px-4 py-2.5 text-sm outline-none transition-colors focus:border-blue-500"
+                  className="ui-input w-full max-w-xl"
                 />
                 {isSearching && (
                   <button
                     onClick={() => {
-                      setQuery("");
-                      setVisibleChapterCount(CHAPTER_PAGE_SIZE);
+                      updateFilters("", statusFilter);
                     }}
-                    className="rounded-xl border border-white/8 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-500 hover:text-white"
+                    className="ui-button"
                   >
                     清除
                   </button>
                 )}
               </div>
-              <div className="text-sm text-gray-400">
-                {isSearching
-                  ? `搜索结果 ${filteredChapters.length}`
+              <div aria-live="polite" className="text-xs text-gray-500">
+                {hasFilters
+                  ? `匹配 ${filteredChapters.length} 章`
                   : `共 ${scan.chapters.length} 章`}
               </div>
             </div>
@@ -562,31 +570,31 @@ export default function LibraryDetail() {
               <div role="group" aria-label="按阅读状态筛选" className="flex flex-wrap gap-1.5">
                 {(["all", "unread", "reading", "read"] as const).map((status) => {
                   const counts = { all: index.totals.total, unread: index.totals.total - index.totals.read - index.totals.reading, reading: index.totals.reading, read: index.totals.read };
-                  return <button key={status} type="button" aria-pressed={statusFilter === status} onClick={() => { setStatusFilter(status); setVisibleChapterCount(CHAPTER_PAGE_SIZE); }} className={`rounded-lg px-3 py-2 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-blue-400 ${statusFilter === status ? "bg-blue-500/20 text-blue-100" : "text-gray-400 hover:bg-white/5 hover:text-gray-200"}`}>{status === "all" ? "全部" : statusLabel[status]} <span className="ml-1 tabular-nums opacity-75">{counts[status]}</span></button>;
+                  return <button key={status} type="button" aria-pressed={statusFilter === status} onClick={() => updateFilters(query, status)} className={`rounded-lg px-3 py-2 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-blue-400 ${statusFilter === status ? "bg-blue-500/20 text-blue-100" : "text-gray-400 hover:bg-white/5 hover:text-gray-200"}`}>{status === "all" ? "全部" : statusLabel[status]} <span className="ml-1 tabular-nums opacity-75">{counts[status]}</span></button>;
                 })}
               </div>
               <div role="group" aria-label="浏览方式" className="flex rounded-lg border border-white/10 p-1">
-                <button type="button" aria-pressed={!showList} onClick={() => { setView("tree"); setQuery(""); setStatusFilter("all"); }} className={`rounded-md px-3 py-1.5 text-xs ${!showList ? "bg-white/10 text-white" : "text-gray-400 hover:text-white"}`}>目录</button>
-                <button type="button" aria-pressed={showList} onClick={() => setView("list")} className={`rounded-md px-3 py-1.5 text-xs ${showList ? "bg-white/10 text-white" : "text-gray-400 hover:text-white"}`}>列表</button>
+                <button type="button" aria-pressed={!showList} onClick={() => setBrowse((current) => ({ ...current, view: "tree" }))} className={`rounded-md px-3 py-1.5 text-xs ${!showList ? "bg-white/10 text-white" : "text-gray-400 hover:text-white"}`}>目录</button>
+                <button type="button" aria-pressed={showList} onClick={() => setBrowse((current) => ({ ...current, view: "list" }))} className={`rounded-md px-3 py-1.5 text-xs ${showList ? "bg-white/10 text-white" : "text-gray-400 hover:text-white"}`}>列表</button>
               </div>
             </div>
           </section>
 
           {selectedChapters.length > 0 && (
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-500/40 bg-blue-500/10 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-500/25 bg-blue-500/5 px-4 py-2">
               <div className="text-sm text-blue-100">
                 已选中 {selectedChapters.length} 个章节
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => markRead(selectedChapters)}
-                  className="rounded-xl border border-green-700/70 bg-green-600/15 px-3 py-2 text-sm font-medium text-green-100 transition-colors hover:border-green-500 hover:bg-green-600/25"
+                  className="ui-button text-emerald-200"
                 >
                   标记为已读
                 </button>
                 <button
                   onClick={clearSelection}
-                  className="rounded-xl border border-white/8 bg-[#111821] px-3 py-2 text-sm text-gray-200 transition-colors hover:border-gray-500"
+                  className="ui-button"
                 >
                   清空选择
                 </button>
@@ -594,39 +602,28 @@ export default function LibraryDetail() {
             </div>
           )}
 
-          {!showList ? (
-            <section className="space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold">目录结构</h2>
-                  <p className="mt-1 text-sm text-gray-400">
-                    点击章节名进入阅读，点击预览查看前 3 张图片。
-                  </p>
-                </div>
-              </div>
+          {!showList && filteredTree && treeIndex ? (
+            <section className="surface-panel overflow-hidden" aria-label="目录结构">
               <DirectoryNode
-                node={scan.tree}
-                index={index}
+                node={filteredTree}
+                index={treeIndex}
                 selectedPaths={selectedChapterPaths}
                 expandedPaths={expandedPaths}
                 revealedCollapsedGroups={revealedCollapsedGroups}
-                onOpenChapter={openChapter}
+                childLimits={browse.childLimits}
+                collapseReadGroups={!hasFilters}
+                onOpenChapter={(path) => void openChapter(path)}
                 onPreviewChapter={setPreviewPath}
                 onToggleChapter={toggleChapterSelection}
                 onToggleExpand={toggleExpanded}
                 onToggleCollapsedGroup={toggleCollapsedGroup}
+                onLoadChildren={loadMoreChildren}
                 onOpenContextMenu={openChapterContextMenu}
               />
             </section>
           ) : (
-            <section className="space-y-3">
+            <section className="surface-panel overflow-hidden" aria-label="章节列表">
               <div>
-                <h2 className="text-lg font-semibold" aria-live="polite">章节列表 <span className="ml-2 text-sm font-normal text-gray-400">{filteredChapters.length} 章</span></h2>
-                <p className="mt-1 text-sm text-gray-400">
-                  点击章节名进入阅读，也可先预览图片。
-                </p>
-              </div>
-              <div className="space-y-2">
                 {visibleChapters.map((chapter) => {
                   const history = index.historyByPath.get(normalizeLibraryPathId(chapter.path));
                   const status = getChapterStatus(history);
@@ -635,10 +632,10 @@ export default function LibraryDetail() {
                     <div
                       key={chapter.path}
                       onContextMenu={(event) => openChapterContextMenu(chapter.path, event)}
-                      className={`rounded-xl border p-3 text-left transition-colors ${
+                      className={`border-b border-white/6 px-3 py-2.5 text-left transition-colors ${
                         isSelected
-                          ? "border-blue-500/80 bg-blue-500/10"
-                          : "border-white/8 bg-[#111821] hover:border-blue-500/70"
+                          ? "bg-blue-500/10"
+                          : "hover:bg-white/[0.025]"
                       }`}
                     >
                       <div className="flex items-center gap-3">
@@ -652,11 +649,11 @@ export default function LibraryDetail() {
                             onChange={() => toggleChapterSelection(chapter.path)}
                           />
                           <span
-                            className={`inline-flex h-6 w-16 shrink-0 items-center justify-center rounded px-2 py-1 text-xs ${statusClass[status]}`}
+                            className={`inline-flex w-12 shrink-0 items-center justify-center rounded py-1 text-xs ${statusClass[status]}`}
                           >
                             {statusLabel[status]}
                           </span>
-                          <button type="button" onClick={() => openChapter(chapter.path)} aria-label={`阅读 ${chapter.name}`} className="min-w-0 flex-1 rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-400">
+                          <button type="button" disabled={openingPath !== null} onClick={() => void openChapter(chapter.path)} aria-label={`阅读 ${chapter.name}`} className="min-w-0 flex-1 rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-400">
                             <div className="truncate text-sm font-medium">
                               {chapter.name}
                             </div>
@@ -668,25 +665,25 @@ export default function LibraryDetail() {
                         <span className="hidden shrink-0 text-xs text-gray-400 sm:inline-flex">
                           {getHistoryProgressText(history)}
                         </span>
-                        <button type="button" onClick={() => setPreviewPath(chapter.path)} aria-label={`预览 ${chapter.name}`} className="shrink-0 rounded-lg border border-white/10 px-3 py-2 text-xs text-blue-200 hover:border-blue-400/50 hover:bg-blue-500/10 focus-visible:outline-2 focus-visible:outline-blue-400">预览</button>
+                        <button type="button" onClick={() => setPreviewPath(chapter.path)} aria-label={`预览 ${chapter.name}`} className="ui-button shrink-0 text-xs text-blue-200">预览</button>
                       </div>
                     </div>
                   );
                 })}
 
                 {filteredChapters.length === 0 && (
-                  <div className="rounded-2xl border border-white/8 bg-[#111821] p-6 text-center text-sm text-gray-500">
+                  <div className="px-6 py-12 text-center text-sm text-gray-400">
                     <p>没有匹配的章节</p>
-                    <button type="button" onClick={() => { setQuery(""); setStatusFilter("all"); }} className="mt-3 text-blue-300 hover:text-blue-200">清除搜索和筛选</button>
+                    <button type="button" onClick={() => updateFilters("", "all")} className="ui-button mt-3 text-blue-300">清除搜索和筛选</button>
                   </div>
                 )}
 
                 {visibleChapters.length < filteredChapters.length && (
                   <button
                     onClick={() =>
-                      setVisibleChapterCount((current) => current + CHAPTER_PAGE_SIZE)
+                      setBrowse((current) => ({ ...current, visibleChapterCount: current.visibleChapterCount + CHAPTER_PAGE_SIZE }))
                     }
-                    className="w-full rounded-xl border border-white/8 bg-[#111821] px-3 py-3 text-sm text-gray-300 transition-colors hover:border-blue-500/60 hover:text-white"
+                    className="ui-button mx-auto my-3 block text-gray-300"
                   >
                     继续加载章节 ({visibleChapters.length} / {filteredChapters.length})
                   </button>
@@ -697,7 +694,7 @@ export default function LibraryDetail() {
         </>
       ) : null}
 
-      {previewChapter && <ChapterPreview key={previewChapter.path} chapter={previewChapter} history={index?.historyByPath.get(normalizeLibraryPathId(previewChapter.path))} onClose={() => setPreviewPath(null)} onRead={() => { setPreviewPath(null); openChapter(previewChapter.path); }} />}
+      {previewChapter && <ChapterPreview key={previewChapter.path} chapter={previewChapter} history={index?.historyByPath.get(normalizeLibraryPathId(previewChapter.path))} onClose={() => setPreviewPath(null)} onRead={() => { setPreviewPath(null); void openChapter(previewChapter.path); }} />}
 
       {contextMenu && (
         <div

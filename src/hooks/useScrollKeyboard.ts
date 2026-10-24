@@ -7,6 +7,7 @@ interface UseScrollKeyboardOptions {
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   onLoadNextFolderAtBottom?: () => void;
   isLoading?: boolean;
+  onScrollIntent?: () => void;
 }
 
 const AT_BOTTOM_THRESHOLD = 5;
@@ -25,12 +26,14 @@ export function useScrollKeyboard({
   scrollContainerRef,
   onLoadNextFolderAtBottom,
   isLoading = false,
+  onScrollIntent,
 }: UseScrollKeyboardOptions) {
   const holdTimerRef = useRef<number | null>(null);
   const intervalRef = useRef<number | null>(null);
   const dirRef = useRef<1 | -1 | null>(null);
   const isLoadingRef = useRef(isLoading);
   const onLoadNextRef = useRef(onLoadNextFolderAtBottom);
+  const onScrollIntentRef = useRef(onScrollIntent);
   // ref mirror of scrollRatio so effect doesn't rebuild on slider drag
   const scrollRatioRef = useRef(scrollRatio);
 
@@ -38,7 +41,8 @@ export function useScrollKeyboard({
     isLoadingRef.current = isLoading;
     onLoadNextRef.current = onLoadNextFolderAtBottom;
     scrollRatioRef.current = scrollRatio;
-  }, [isLoading, onLoadNextFolderAtBottom, scrollRatio]);
+    onScrollIntentRef.current = onScrollIntent;
+  }, [isLoading, onLoadNextFolderAtBottom, scrollRatio, onScrollIntent]);
 
   // 不依赖 scrollRatio/isLoading/onLoadNext，避免 effect 频繁销毁重建
   useEffect(() => {
@@ -59,11 +63,13 @@ export function useScrollKeyboard({
       const isUp = key === "w" || code === "ArrowUp";
       const isDown = key === "s" || code === "ArrowDown";
       if (!isUp && !isDown) return;
+      if (isLoadingRef.current) return;
 
       e.preventDefault();
       const dir: 1 | -1 = isUp ? -1 : 1;
       const c = scrollContainerRef.current;
       if (!c) return;
+      onScrollIntentRef.current?.();
 
       const ratio = scrollRatioRef.current;
 

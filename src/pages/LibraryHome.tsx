@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import type { LibraryItem, ReadingHistory } from "../types";
-import { selectFolder, scanComicLibrary } from "../utils/fileUtils";
+import { selectFolder } from "../utils/fileUtils";
 import {
   addOrUpdateLibraryItem,
   deleteLibraryItem,
@@ -14,70 +14,100 @@ import {
   isPathInsideRoot,
 } from "../utils/libraryUtils";
 import { getAllHistory } from "../utils/historyUtils";
+import { useLibraryChapterCounts } from "../hooks/useLibraryChapterCounts";
+import { useReadingSessionEntry } from "../hooks/useReadingSessionEntry";
+
+function WorkIcon() {
+  return (
+    <div className="work-icon">
+      <img src="/app-icon.png" alt="" className="h-12 w-12" />
+    </div>
+  );
+}
+
+function ReadingProgress({ history }: { history?: ReadingHistory }) {
+  const progress = history && history.totalFiles > 0
+    ? Math.min(100, (history.currentIndex + 1) / history.totalFiles * 100)
+    : 0;
+
+  return (
+    <div className="flex items-center gap-3">
+      <div
+        className="h-1.5 min-w-12 flex-1 overflow-hidden rounded-full bg-[#273546]"
+        aria-hidden="true"
+      >
+        <div
+          className="h-full rounded-full bg-blue-400"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+      <span className="shrink-0 text-xs tabular-nums text-slate-400">
+        {getHistoryProgressText(history)}
+      </span>
+    </div>
+  );
+}
 
 export default function LibraryHome() {
   const navigate = useNavigate();
-  const [items, setItems] = useState<LibraryItem[]>(() => getLibraryItems());
-  const [histories, setHistories] = useState<ReadingHistory[]>(() =>
-    getAllHistory(),
-  );
-  const [chapterCounts, setChapterCounts] = useState<Record<string, number>>({});
-  const [isAdding, setIsAdding] = useState(false);
-  const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadCounts = async () => {
-      for (const item of items) {
-        if (chapterCounts[item.id] !== undefined) continue;
-        try {
-          const result = await scanComicLibrary(item.rootPath);
-          if (!cancelled) {
-            setChapterCounts((current) => ({
-              ...current,
-              [item.id]: result.chapters.length,
-            }));
-          }
-        } catch {
-          if (!cancelled) {
-            setChapterCounts((current) => ({ ...current, [item.id]: 0 }));
-          }
-        }
-      }
-    };
-
-    loadCounts();
-    return () => {
-      cancelled = true;
-    };
-  }, [items, chapterCounts]);
-
-  const handleAddLibrary = async () => {
-    setIsAddMenuOpen(false);
-    setIsAdding(true);
-    try {
-      const folder = await selectFolder();
-      if (!folder) return;
-      setItems(addOrUpdateLibraryItem({ name: folder.name, rootPath: folder.path }));
-      setHistories(getAllHistory());
-    } finally {
-      setIsAdding(false);
-    }
+  const [items, setItems] = useState<LibraryItem[]>(getLibraryItems);
+  const [histories, setHistories] = useState<ReadingHistory[]>(getAllHistory);
+  const { counts, retry } = useLibraryChapterCounts(items);
+  const [actionPending, setPending] = useState<string | null>(null);
+  const [actionError, setActionError] = useState("");
+  const {
+    openingPath,
+    error: readingError,
+    run: openReading,
+    clearError,
+    isMounted,
+  } = useReadingSessionEntry();
+  const pending = actionPending ?? openingPath;
+  const error = actionError || readingError?.message || "";
+  const setError = (message: string) => {
+    if (!isMounted()) return;
+    setActionError(message);
+    if (!message) clearError();
   };
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState("recent");
+  const [layout, setLayout] = useState<"grid" | "list">("grid");
+  const latest = histories
+    .filter((history) => items.some((item) => isPathInsideRoot(history.folderPath, item.rootPath)))
+    .sort((a, b) => b.lastReadTime - a.lastReadTime)[0];
+  const latestLibrary = latest && items
+    .filter((item) => isPathInsideRoot(latest.folderPath, item.rootPath))
+    .sort((a, b) => b.rootPath.length - a.rootPath.length)[0];
+  const visible = useMemo(() => {
+    const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+    return items
+      .filter((item) => terms.every((term) => `${item.name} ${item.rootPath}`.toLocaleLowerCase().includes(term)))
+      .sort((a, b) => sort === "name"
+        ? a.name.localeCompare(b.name, "zh-CN", { numeric: true })
+        : (getRecentHistoryForLibrary(histories, b.rootPath)?.lastReadTime ?? b.lastOpenedAt)
+          - (getRecentHistoryForLibrary(histories, a.rootPath)?.lastReadTime ?? a.lastOpenedAt));
+  }, [items, histories, query, sort]);
 
-  const handleTemporaryOpen = async () => {
-    setIsAddMenuOpen(false);
-    setIsAdding(true);
+  const addFolder = async (temporary: boolean) => {
+    if (pending) return;
+    setPending("add");
+    setError("");
     try {
       const folder = await selectFolder();
-      if (!folder) return;
-      sessionStorage.setItem("openComicFolder", JSON.stringify(folder));
-      // 临时打开不属于任何书库，清空章节序列，避免残留导致章节导航误判
-      sessionStorage.removeItem("comicChapterSequence");
-      navigate("/viewer?openFolder=true");
+      if (!folder || !isMounted()) return;
+      if (temporary) {
+        for (const key of ["continueReading", "directRestore", "restoreState", "comicChapterSequence"])
+          sessionStorage.removeItem(key);
+        sessionStorage.setItem("openComicFolder", JSON.stringify(folder));
+        navigate("/viewer?openFolder=true");
+      } else {
+        setItems(addOrUpdateLibraryItem({ name: folder.name, rootPath: folder.path }));
+        setHistories(getAllHistory());
+      }
+    } catch (cause) {
+      setError(`打开目录失败：${cause instanceof Error ? cause.message : String(cause)}`);
     } finally {
-      setIsAdding(false);
+      if (isMounted()) setPending(null);
     }
   };
 
@@ -85,170 +115,266 @@ export default function LibraryHome() {
     touchLibraryItem(item.id);
     navigate(`/library?root=${encodeURIComponent(item.id)}`);
   };
-
-  const continueRecent = async (history: ReadingHistory) => {
-    sessionStorage.setItem("continueReading", JSON.stringify(history));
-    sessionStorage.setItem("currentFolderPath", history.folderPath);
-
-    // 章节导航依赖 comicChapterSequence：找到包含该历史记录的书库并扫描，生成章节序列。
-    // 从书库直接「继续」时不会经过 LibraryDetail，需要在这里补齐序列，否则上一章节/下一章节/当前进度都无法显示。
-    try {
-      const library = items.find((item) =>
-        isPathInsideRoot(history.folderPath, item.rootPath),
-      );
-      if (library) {
-        const result = await scanComicLibrary(library.rootPath);
-        sessionStorage.setItem(
-          "comicChapterSequence",
-          JSON.stringify(
-            result.chapters.map((chapter) => ({
-              name: chapter.name,
-              path: chapter.path,
-            })),
-          ),
-        );
-      } else {
-        // 找不到所属书库（例如书库已被移除），清空序列，回退到无章节导航
-        sessionStorage.removeItem("comicChapterSequence");
-      }
-    } catch (error) {
-      console.error("解析章节序列失败:", error);
-      sessionStorage.removeItem("comicChapterSequence");
-    }
-
-    navigate("/viewer?fromContinueReading=true");
+  const continueReading = (history: ReadingHistory) => {
+    if (pending) return;
+    setError("");
+    return openReading(history, { libraries: items });
   };
 
-  const handleDelete = (item: LibraryItem) => {
-    if (!confirm(`确定要从书库移除「${item.name}」吗？`)) return;
-    setItems(deleteLibraryItem(item.id));
+  const remove = (item: LibraryItem) => {
+    if (confirm(`从书库移除「${item.name}」？本地文件和阅读历史会保留。`))
+      setItems(deleteLibraryItem(item.id));
   };
 
   return (
-    <main className="mx-auto max-w-7xl px-6 py-8">
-      <section className="mb-6 rounded-2xl border border-white/8 bg-white/[0.03] p-5 shadow-[0_18px_40px_rgba(0,0,0,0.2)]">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="max-w-2xl">
-            <div className="text-xs font-medium uppercase tracking-[0.24em] text-blue-200/80">
-              Local Library
-            </div>
-            <p className="mt-3 text-sm leading-6 text-gray-300">
-              把作品根目录收进书库，用目录预览挑章节；临时打开保留给一次性阅读，不和书库管理混在一起。
+    <main className="app-page">
+      <div className="mb-7 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="page-heading">我的书库</h1>
+          <p className="mt-2 text-base text-slate-400">
+            管理本地漫画，接着上次的进度阅读。
+          </p>
+        </div>
+        <div className="flex gap-3">
+          <button
+            type="button"
+            className="ui-button-primary"
+            disabled={Boolean(pending)}
+            onClick={() => void addFolder(false)}
+          >
+            <span aria-hidden="true" className="text-xl leading-none">＋</span>
+            添加作品
+          </button>
+          <button
+            type="button"
+            className="ui-button"
+            disabled={Boolean(pending)}
+            onClick={() => void addFolder(true)}
+          >
+            临时打开
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div
+          role="alert"
+          className="mb-5 flex items-center justify-between gap-4 rounded-lg border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200"
+        >
+          <span>{error}</span>
+          <button
+            type="button"
+            aria-label="关闭错误提示"
+            onClick={() => setError("")}
+            className="px-2"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {latest && (
+        <section className="continue-band mb-6" aria-label="最近阅读">
+          <WorkIcon />
+          <div className="min-w-0 flex-1">
+            <p className="mb-1 text-xs font-medium text-blue-300">接着读</p>
+            <h2 className="truncate text-xl font-semibold">
+              {latestLibrary?.name ?? latest.folderName}
+            </h2>
+            <p className="mt-1 truncate text-sm text-slate-400">
+              {latest.folderName} · 第 {latest.currentIndex + 1} / {latest.totalFiles} 页
             </p>
           </div>
-
-          <div className="relative">
-            <button
-              onClick={() => setIsAddMenuOpen((open) => !open)}
-              disabled={isAdding}
-              className="rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isAdding ? "处理中..." : "添加目录"}
-            </button>
-
-            {isAddMenuOpen && (
-              <div className="absolute right-0 z-20 mt-2 w-56 overflow-hidden rounded-xl border border-white/8 bg-[#10161d] shadow-2xl">
-                <button
-                  onClick={handleAddLibrary}
-                  className="block w-full px-4 py-3 text-left text-sm text-gray-100 hover:bg-white/6"
-                >
-                  添加作品目录
-                </button>
-                <button
-                  onClick={handleTemporaryOpen}
-                  className="block w-full border-t border-white/8 px-4 py-3 text-left text-sm text-gray-100 hover:bg-white/6"
-                >
-                  临时打开图片文件夹
-                </button>
-              </div>
-            )}
+          <div className="hidden w-1/3 lg:block">
+            <ReadingProgress history={latest} />
           </div>
-        </div>
-      </section>
+          <button
+            type="button"
+            className="ui-button-primary"
+            disabled={Boolean(pending)}
+            onClick={() => void continueReading(latest)}
+          >
+            {pending === latest.folderPath ? "正在打开…" : "继续阅读"}
+            <span aria-hidden="true">›</span>
+          </button>
+        </section>
+      )}
 
-      {items.length === 0 ? (
-        <div className="flex min-h-[420px] items-center justify-center rounded-2xl border border-dashed border-white/10 bg-white/[0.03]">
-          <div className="text-center">
-            <h2 className="mt-4 text-xl font-semibold">还没有漫画作品</h2>
-            <p className="mt-2 text-sm text-gray-400">
-              添加一个作品根目录后，会在这里显示成卡片。
-            </p>
-            <button
-              onClick={handleAddLibrary}
-              disabled={isAdding}
-              className="mt-5 rounded-xl bg-blue-500 px-5 py-2 text-sm font-medium transition-colors hover:bg-blue-400 disabled:opacity-60"
-            >
-              添加作品目录
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {items.map((item) => {
-            const recent = getRecentHistoryForLibrary(histories, item.rootPath);
-            return (
-              <article
-                key={item.id}
-                onClick={() => openLibrary(item)}
-                className="group cursor-pointer rounded-2xl border border-white/8 bg-[#111821] p-5 transition-colors hover:border-blue-500/60 hover:bg-[#15202b]"
+      {items.length > 0 && (
+        <>
+          <div className="mb-6 flex flex-wrap items-center gap-3">
+            <label className="relative min-w-48 flex-1">
+              <span className="sr-only">搜索作品名称或路径</span>
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="搜索作品名称或路径"
+                className="ui-input w-full"
+              />
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <span className="sr-only">作品排序</span>
+              <select
+                className="ui-input"
+                value={sort}
+                onChange={(event) => setSort(event.target.value)}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h2 className="truncate text-lg font-semibold">{item.name}</h2>
-                    <p className="mt-1 truncate text-xs text-gray-500" title={item.rootPath}>
-                      {item.rootPath}
-                    </p>
-                  </div>
-                  <button
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleDelete(item);
-                    }}
-                    className="rounded-lg px-2 py-1 text-sm text-gray-500 opacity-0 transition-opacity hover:bg-white/8 hover:text-red-300 group-hover:opacity-100"
-                    title="移除"
+                <option value="recent">最近阅读</option>
+                <option value="name">名称排序</option>
+              </select>
+            </label>
+            <div role="group" aria-label="作品显示方式" className="flex gap-1">
+              <button
+                type="button"
+                className="ui-button"
+                aria-label="卡片显示"
+                aria-pressed={layout === "grid"}
+                onClick={() => setLayout("grid")}
+                style={layout === "grid"
+                  ? { borderColor: "#4596ff", color: "#82b8ff" }
+                  : undefined}
+              >
+                ▦
+              </button>
+              <button
+                type="button"
+                className="ui-button"
+                aria-label="列表显示"
+                aria-pressed={layout === "list"}
+                onClick={() => setLayout("list")}
+                style={layout === "list"
+                  ? { borderColor: "#4596ff", color: "#82b8ff" }
+                  : undefined}
+              >
+                ☰
+              </button>
+            </div>
+          </div>
+
+          <h2 className="mb-4 text-base font-semibold">
+            {query ? "搜索结果" : "全部作品"}
+            <span className="ml-3 font-normal text-slate-500">{visible.length}</span>
+          </h2>
+
+          {visible.length === 0 && (
+            <div className="py-16 text-center text-sm text-slate-400">
+              没有匹配的作品。
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                className="ml-3 text-blue-300 hover:underline"
+              >
+                清除搜索
+              </button>
+            </div>
+          )}
+
+          <div className={layout === "grid"
+            ? "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
+            : "flex flex-col gap-3"}
+          >
+            {visible.map((item) => {
+              const recent = getRecentHistoryForLibrary(histories, item.rootPath);
+              const scan = counts[item.id];
+
+              return (
+                <article
+                  key={item.id}
+                  className={`work-card ${layout === "list" ? "flex flex-wrap items-center gap-5" : ""}`}
+                >
+                  <div
+                    className={`flex min-w-0 items-start gap-4 ${layout === "list" ? "min-w-60 flex-1" : ""}`}
                   >
-                    ×
-                  </button>
-                </div>
-
-                <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
-                  <div className="rounded-xl bg-black/20 p-3">
-                    <div className="text-xs text-gray-400">可读章节</div>
-                    <div className="mt-1 text-xl font-semibold">
-                      {chapterCounts[item.id] !== undefined ? (
-                        chapterCounts[item.id]
-                      ) : (
-                        <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-gray-500 border-t-blue-400" />
-                      )}
+                    <WorkIcon />
+                    <div className="min-w-0 flex-1">
+                      <h3 className="truncate text-lg font-semibold">
+                        <button
+                          type="button"
+                          onClick={() => openLibrary(item)}
+                          className="text-left hover:text-blue-300"
+                        >
+                          {item.name}
+                        </button>
+                      </h3>
+                      <p
+                        className="mt-1 truncate text-sm text-slate-400"
+                        title={item.rootPath}
+                      >
+                        {item.rootPath}
+                      </p>
+                      <div className="mt-2 text-xs text-slate-400">
+                        {scan?.status === "error" ? (
+                          <button
+                            type="button"
+                            title={scan.error}
+                            className="text-amber-300 hover:underline"
+                            onClick={() => retry(item.id)}
+                          >
+                            扫描失败 · 重试
+                          </button>
+                        ) : scan?.status === "ready" ? `共 ${scan.count} 章` : "正在扫描章节…"}
+                      </div>
                     </div>
-                  </div>
-                  <div className="rounded-xl bg-black/20 p-3">
-                    <div className="text-xs text-gray-400">最近进度</div>
-                    <div className="mt-1 truncate font-medium">
-                      {getHistoryProgressText(recent)}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex items-center justify-between gap-3 text-sm">
-                  <span className="truncate text-gray-400">
-                    {recent ? `最近：${recent.folderName}` : "点击预览目录"}
-                  </span>
-                  {recent && (
                     <button
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        continueRecent(recent);
-                      }}
-                      className="shrink-0 rounded-lg bg-blue-500 px-3 py-1.5 text-white transition-colors hover:bg-blue-400"
+                      type="button"
+                      aria-label={`移除${item.name}`}
+                      title="从书库移除"
+                      onClick={() => remove(item)}
+                      className="-mr-1 rounded px-2 text-lg text-slate-500 hover:bg-white/5 hover:text-red-300"
                     >
-                      继续
+                      ×
                     </button>
-                  )}
-                </div>
-              </article>
-            );
-          })}
+                  </div>
+
+                  <div className={layout === "list" ? "w-52" : "mt-5"}>
+                    <p className="mb-2 truncate text-xs text-slate-400">
+                      {recent ? `最近：${recent.folderName}` : "尚未开始阅读"}
+                    </p>
+                    <ReadingProgress history={recent} />
+                  </div>
+
+                  <div className={`flex gap-2 ${layout === "grid" ? "mt-5" : ""}`}>
+                    <button
+                      type="button"
+                      className="ui-button flex-1"
+                      onClick={() => openLibrary(item)}
+                    >
+                      预览目录
+                    </button>
+                    {recent && (
+                      <button
+                        type="button"
+                        className="ui-button-primary flex-1"
+                        disabled={Boolean(pending)}
+                        onClick={() => void continueReading(recent)}
+                      >
+                        {pending === recent.folderPath ? "正在打开…" : "继续阅读"}
+                      </button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {items.length === 0 && (
+        <div className="flex min-h-80 flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-slate-700 text-center">
+          <WorkIcon />
+          <h2 className="text-lg font-semibold">把第一部作品加入书库</h2>
+          <p className="max-w-sm px-4 text-sm leading-6 text-slate-400">
+            选择包含章节的作品目录，即可预览目录和保存阅读进度。
+          </p>
+          <button
+            type="button"
+            className="ui-button-primary"
+            disabled={Boolean(pending)}
+            onClick={() => void addFolder(false)}
+          >
+            添加作品
+          </button>
         </div>
       )}
     </main>

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { ViewMode } from "../types";
+import { pickReadingGroupIndex } from "../utils/readerPosition";
 
 interface UseCurrentImageDetectionOptions {
   viewMode: ViewMode;
@@ -10,7 +11,7 @@ interface UseCurrentImageDetectionOptions {
 }
 
 /**
- * 用 IntersectionObserver 检测当前可见的图片组。
+ * Observe visible groups, then choose the one crossing the viewport's reading line.
  */
 export function useCurrentImageDetection({
   viewMode,
@@ -20,7 +21,6 @@ export function useCurrentImageDetection({
   scrollContainerRef,
 }: UseCurrentImageDetectionOptions) {
   const observerRef = useRef<IntersectionObserver | null>(null);
-  const visibilityMapRef = useRef<Map<number, number>>(new Map());
 
   useEffect(() => {
     if (
@@ -37,24 +37,30 @@ export function useCurrentImageDetection({
     if (observerRef.current) {
       observerRef.current.disconnect();
     }
-    visibilityMapRef.current.clear();
-
     const groups = container.querySelectorAll("[data-image-group]");
     if (groups.length === 0) return;
 
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const visibleGroups = new Map<number, HTMLElement>();
+    let frame: number | null = null;
     let hasScrolled = false;
 
     const pickBest = () => {
-      let bestIndex = 0;
-      let bestRatio = 0;
-      visibilityMapRef.current.forEach((ratio, idx) => {
-        if (ratio > bestRatio || (ratio === bestRatio && idx < bestIndex)) {
-          bestRatio = ratio;
-          bestIndex = idx;
-        }
+      frame = null;
+      const viewport = container.getBoundingClientRect();
+      const candidates = visibleGroups.size ? Array.from(visibleGroups.values()) : Array.from(groups) as HTMLElement[];
+      const index = pickReadingGroupIndex(candidates.map((group) => {
+        const bounds = group.getBoundingClientRect();
+        return { index: Number(group.dataset.imageGroup ?? "0"), top: bounds.top, bottom: bounds.bottom };
+      }), {
+        top: viewport.top,
+        height: container.clientHeight,
+        scrollTop: container.scrollTop,
+        scrollHeight: container.scrollHeight,
       });
-      if (bestRatio > 0) onCurrentImageChange(bestIndex * imagesPerGroup);
+      if (index !== null) onCurrentImageChange(index * imagesPerGroup);
+    };
+    const scheduleDetection = () => {
+      if (hasScrolled && frame === null) frame = requestAnimationFrame(pickBest);
     };
 
     observerRef.current = new IntersectionObserver(
@@ -63,38 +69,40 @@ export function useCurrentImageDetection({
           const idx = Number(
             (entry.target as HTMLElement).dataset.imageGroup ?? "0",
           );
-          visibilityMapRef.current.set(idx, entry.intersectionRatio);
+          if (entry.isIntersecting) visibleGroups.set(idx, entry.target as HTMLElement);
+          else visibleGroups.delete(idx);
         }
-        if (hasScrolled) {
-          if (debounceTimer) clearTimeout(debounceTimer);
-          debounceTimer = setTimeout(pickBest, 100);
-        }
+        scheduleDetection();
       },
       {
         root: container,
-        threshold: [0, 0.1, 0.25, 0.5, 0.75, 1],
+        threshold: 0,
       },
     );
 
     groups.forEach((el) => observerRef.current?.observe(el));
     const handleScroll = () => {
       hasScrolled = true;
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(pickBest, 100);
+      scheduleDetection();
     };
     container.addEventListener("scroll", handleScroll, { passive: true });
+    container.addEventListener("load", scheduleDetection, true);
+    const resizeObserver = new ResizeObserver(scheduleDetection);
+    resizeObserver.observe(container);
 
     return () => {
       if (observerRef.current) {
         observerRef.current.disconnect();
         observerRef.current = null;
       }
-      if (debounceTimer) clearTimeout(debounceTimer);
+      if (frame !== null) cancelAnimationFrame(frame);
+      resizeObserver.disconnect();
       container.removeEventListener("scroll", handleScroll);
+      container.removeEventListener("load", scheduleDetection, true);
     };
   }, [
     viewMode,
-    imageUrls.length,
+    imageUrls,
     onCurrentImageChange,
     imagesPerGroup,
     scrollContainerRef,

@@ -1,16 +1,19 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useComicViewer } from "../hooks/useComicViewer";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import Toolbar from "./Toolbar";
 import ImageViewer from "./ImageViewer";
+import type { ImageViewerHandle } from "./ImageViewer";
+import WindowControls from "./WindowControls";
 import Navigation from "./Navigation";
 import PageOverview from "./PageOverview";
 import type { ChapterSequenceItem, ReadingHistory } from "../types";
 import { normalizeLibraryPathId } from "../utils/libraryUtils";
 
 export default function ComicViewer() {
+  const navigate = useNavigate();
   const { state, actions } = useComicViewer();
   const [searchParams, setSearchParams] = useSearchParams();
   const [restoreHistory, setRestoreHistory] = useState<ReadingHistory | null>(
@@ -19,12 +22,30 @@ export default function ComicViewer() {
   const [imagesPerGroup, setImagesPerGroup] = useState<number>(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showPageOverview, setShowPageOverview] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(() => localStorage.getItem("comic_reader_settings_open") === "true");
   const [fullscreenImageFit, setFullscreenImageFit] = useState<
     "original" | "fit"
   >("original");
   const hasProcessedOpenFolder = useRef(false);
   const hasProcessedContinueReading = useRef(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const imageViewerRef = useRef<ImageViewerHandle>(null);
+  const persistCurrentReading = useCallback(() => {
+    actions.persistHistory(imageViewerRef.current?.flushScrollPosition() ?? undefined);
+  }, [actions]);
+  useEffect(() => {
+    const hidden = () => { if (document.visibilityState === "hidden") persistCurrentReading(); };
+    window.addEventListener("pagehide", persistCurrentReading);
+    document.addEventListener("visibilitychange", hidden);
+    return () => {
+      window.removeEventListener("pagehide", persistCurrentReading);
+      document.removeEventListener("visibilitychange", hidden);
+    };
+  }, [persistCurrentReading]);
+  const toggleSettings = () => setSettingsOpen((open) => {
+    localStorage.setItem("comic_reader_settings_open", String(!open));
+    return !open;
+  });
 
   const toggleFullscreen = useCallback(async () => {
     try {
@@ -50,7 +71,12 @@ export default function ComicViewer() {
 
   // 全局键盘快捷键（←/A/D/空格/F/Home/End/+/-/0/M/PageUp/PageDown）
   const { goToPage } = actions;
-  const { loadNextFolder } = actions;
+  const loadNextFolder = useCallback(() => {
+    persistCurrentReading();
+    actions.loadNextFolder();
+  }, [actions, persistCurrentReading]);
+  const nextPage = useCallback(() => { persistCurrentReading(); actions.nextPage(); }, [actions, persistCurrentReading]);
+  const prevPage = useCallback(() => { persistCurrentReading(); actions.prevPage(); }, [actions, persistCurrentReading]);
   const { scrollRatio } = state;
   const goToFirst = useCallback(() => {
     if (state.files.length > 0) goToPage(0);
@@ -60,6 +86,8 @@ export default function ComicViewer() {
   }, [state.files.length, goToPage]);
 
   const scrollByPage = useCallback((direction: -1 | 1) => {
+    imageViewerRef.current?.cancelRestoration();
+    actions.finishScrollRestoration();
     const container = scrollContainerRef.current;
     if (!container) return;
     if (direction === 1 && container.scrollHeight - container.scrollTop - container.clientHeight <= 5) {
@@ -67,19 +95,21 @@ export default function ComicViewer() {
       return;
     }
     container.scrollBy({ top: direction * container.clientHeight * scrollRatio * 0.85, behavior: "smooth" });
-  }, [loadNextFolder, scrollRatio]);
+  }, [loadNextFolder, scrollRatio, actions]);
 
   const scrollToEdge = useCallback((edge: "start" | "end") => {
+    imageViewerRef.current?.cancelRestoration();
+    actions.finishScrollRestoration();
     const container = scrollContainerRef.current;
     if (!container) return;
     container.scrollTo({ top: edge === "start" ? 0 : container.scrollHeight, behavior: "auto" });
-  }, []);
+  }, [actions]);
 
   useKeyboardShortcuts({
     viewMode: state.viewMode,
     disableZoom: state.viewMode === "page" && isFullscreen && fullscreenImageFit === "fit",
-    onNextPage: actions.nextPage,
-    onPrevPage: actions.prevPage,
+    onNextPage: nextPage,
+    onPrevPage: prevPage,
     onZoomIn: actions.zoomIn,
     onZoomOut: actions.zoomOut,
     onResetZoom: actions.resetZoom,
@@ -124,6 +154,7 @@ export default function ComicViewer() {
   const openChapterBySequence = useCallback(
     async (chapter: ChapterSequenceItem | null) => {
       if (!chapter) return;
+      persistCurrentReading();
       try {
         sessionStorage.removeItem("continueReading");
         setRestoreHistory(null);
@@ -133,7 +164,7 @@ export default function ComicViewer() {
         console.error("切换章节失败:", error);
       }
     },
-    [actions],
+    [actions, persistCurrentReading],
   );
 
   useEffect(() => {
@@ -223,15 +254,22 @@ export default function ComicViewer() {
   }, [searchParams, setSearchParams, handleFolderSelect, actions]);
 
   const progressValue = state.loadingProgress || 0;
-  const progressCount = state.imageUrls.length;
+  const progressCount = state.scrollImageStates.filter((status) => status === "ready" || status === "error").length;
   const totalCount = state.files.length;
 
   return (
-    <div className="flex h-screen bg-gray-900">
-      {!isFullscreen && (
-        <div className="fixed bottom-0 left-0 top-0 z-40">
+    <div className="reader-layout">
+      {!isFullscreen && <header className="flex h-12 shrink-0 items-center gap-3 border-b border-white/10 bg-[#0c131c] pl-3 text-sm">
+        <button type="button" onClick={() => { persistCurrentReading(); navigate("/"); }} className="ui-button !min-h-8 !px-3 !py-1">‹ <span className="hidden sm:inline">书库</span></button>
+        <div data-tauri-drag-region className="flex h-full min-w-0 flex-1 items-center gap-3"><span className="truncate font-medium">{state.folderName || "Swell Comic"}</span><span className="hidden text-xs text-slate-500 md:inline">{state.viewMode === "scroll" ? "滚动阅读" : "分页阅读"}</span></div>
+        <button type="button" className="ui-button !min-h-8 !px-3 !py-1" aria-expanded={settingsOpen} aria-controls="reader-settings" onClick={toggleSettings}>阅读设置</button>
+        <WindowControls onBeforeClose={persistCurrentReading} />
+      </header>}
+      <div className="relative flex min-h-0 flex-1">
+      {!isFullscreen && settingsOpen && (
+        <div id="reader-settings" className="reader-settings">
           <Toolbar
-            onBeforeLeave={actions.flushHistory}
+            onBeforeLeave={persistCurrentReading}
             onFolderSelect={handleFolderSelect}
             onPrevChapter={() => void openChapterBySequence(prevChapter)}
             onNextChapter={() => void openChapterBySequence(nextChapter)}
@@ -266,12 +304,13 @@ export default function ComicViewer() {
       )}
 
       <div
-        className={`relative flex min-w-0 flex-1 flex-col overflow-hidden ${isFullscreen ? "ml-0" : "ml-[320px]"}`}
+        className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
       >
         {!isFullscreen && state.files.length > 0 && <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-[#0c1117] px-3 py-2 text-xs text-gray-300">
           <div className="flex min-w-0 items-center gap-3">
             <button type="button" disabled={state.isLoading} onClick={() => setShowPageOverview(true)} className="shrink-0 rounded-lg border border-blue-400/30 bg-blue-500/10 px-3 py-2 text-blue-100 hover:bg-blue-500/20 disabled:opacity-40">图片页览</button>
             <span aria-live="polite" className="shrink-0 tabular-nums">第 {state.currentIndex + 1} / {state.files.length} 页</span>
+            {state.isBackgroundLoading && <span role="status" className="text-slate-500">后台加载 {progressCount}/{totalCount}</span>}
             <span className="hidden max-w-48 truncate text-gray-500 xl:inline" title={state.files[state.currentIndex]?.name}>{state.files[state.currentIndex]?.name}</span>
           </div>
           <div role="group" aria-label="图片缩放" className="flex items-center gap-1">
@@ -300,6 +339,7 @@ export default function ComicViewer() {
             )}
 
             <ImageViewer
+              readerRef={imageViewerRef}
               scrollContainerRef={scrollContainerRef}
               imageUrl={state.imageUrl}
               currentFileName={state.files[state.currentIndex]?.name}
@@ -309,6 +349,11 @@ export default function ComicViewer() {
               imageWidth={state.imageWidth}
               scrollRatio={state.scrollRatio}
               imageUrls={state.imageUrls}
+              scrollImageStates={state.scrollImageStates}
+              scrollImageSizes={state.scrollImageSizes}
+              isLayoutReady={state.isScrollLayoutReady}
+              isRestoringScrollPosition={state.isRestoringScrollPosition}
+              onRestorationEnd={actions.finishScrollRestoration}
               files={state.files}
               scrollPosition={
                 state.viewMode === "scroll" ? state.scrollPosition : undefined
@@ -319,7 +364,7 @@ export default function ComicViewer() {
                   : undefined
               }
               onLoadNextFolder={
-                state.viewMode === "scroll" ? actions.loadNextFolder : undefined
+                state.viewMode === "scroll" ? loadNextFolder : undefined
               }
               onCurrentImageChange={
                 state.viewMode === "scroll"
@@ -348,17 +393,17 @@ export default function ComicViewer() {
             />
           </div>
 
+        </div>
           {state.viewMode === "page" && !isFullscreen && (
             <Navigation
               files={state.files}
               currentIndex={state.currentIndex}
-              onPrevPage={actions.prevPage}
-              onNextPage={actions.nextPage}
+              onPrevPage={prevPage}
+              onNextPage={nextPage}
               onGoToPage={actions.goToPage}
-              onLoadNextFolder={actions.loadNextFolder}
+              onLoadNextFolder={loadNextFolder}
             />
           )}
-        </div>
 
         {state.isLoading && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70">
@@ -382,6 +427,7 @@ export default function ComicViewer() {
           </div>
         )}
         {showPageOverview && state.files.length > 0 && <PageOverview key={state.folderPath} files={state.files} imageUrls={state.imageUrls} currentIndex={state.currentIndex} onGoToPage={actions.goToPage} onClose={() => setShowPageOverview(false)} />}
+      </div>
       </div>
     </div>
   );
