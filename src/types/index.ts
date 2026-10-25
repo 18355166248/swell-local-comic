@@ -14,6 +14,7 @@ export interface ComicViewerState {
   imageUrl: string;
   viewMode: ViewMode;
   imageWidth: number;
+  imagesPerGroup: number;
   imageUrls: string[];
   scrollImageStates: ReaderImageState[];
   scrollImageSizes: (ReaderImageSize | null)[];
@@ -45,6 +46,7 @@ export interface ReadingHistory {
   zoom?: number;
   viewMode?: ViewMode;
   imageWidth?: number;
+  imagesPerGroup?: number;
   scrollPosition?: number;
   scrollHeight?: number; // 可滚动距离，用于计算阅读进度
   scrollRatio?: number;
@@ -62,6 +64,7 @@ export interface ReadingHistoryInput {
   zoom?: number;
   viewMode?: ViewMode;
   imageWidth?: number;
+  imagesPerGroup?: number;
   scrollPosition?: number;
   scrollHeight?: number;
   scrollRatio?: number;

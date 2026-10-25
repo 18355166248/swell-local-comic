@@ -23,7 +23,6 @@ export default function ComicViewer() {
   const [restoreHistory, setRestoreHistory] = useState<ReadingHistory | null>(
     null,
   );
-  const [imagesPerGroup, setImagesPerGroup] = useState<number>(1);
   const { isFullscreen, fullscreenError, toggleFullscreen } = useNativeFullscreen();
   const [showPageOverview, setShowPageOverview] = useState(false);
   const [activeReaderEdge, setActiveReaderEdge] = useState<"left" | "right" | null>(null);
@@ -349,8 +348,8 @@ export default function ComicViewer() {
             onImageWidthChange={actions.setImageWidth}
             scrollRatio={state.scrollRatio}
             onScrollRatioChange={actions.setScrollRatio}
-            imagesPerGroup={imagesPerGroup}
-            onImagesPerGroupChange={setImagesPerGroup}
+            imagesPerGroup={state.imagesPerGroup}
+            onImagesPerGroupChange={actions.setImagesPerGroup}
             onToggleFullscreen={toggleFullscreen}
           />
         </div>
@@ -427,7 +426,7 @@ export default function ComicViewer() {
               onRetryImage={actions.retryImage}
               isLoading={state.isLoading}
               isImageLoading={state.isImageLoading}
-              imagesPerGroup={imagesPerGroup}
+              imagesPerGroup={state.imagesPerGroup}
               isFullscreen={isFullscreen}
               isImmersive={isImmersive}
               onToggleFullscreen={toggleFullscreen}

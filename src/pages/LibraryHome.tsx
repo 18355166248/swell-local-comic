@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import type { LibraryItem, ReadingHistory } from "../types";
 import { selectFolder } from "../utils/fileUtils";
@@ -9,6 +9,7 @@ import {
   touchLibraryItem,
 } from "../utils/libraryStorage";
 import {
+  getHistoryProgressPercent,
   getHistoryProgressText,
   getRecentHistoryForLibrary,
   isPathInsideRoot,
@@ -16,6 +17,12 @@ import {
 import { getAllHistory } from "../utils/historyUtils";
 import { useLibraryChapterCounts } from "../hooks/useLibraryChapterCounts";
 import { useReadingSessionEntry } from "../hooks/useReadingSessionEntry";
+import {
+  loadLibraryHomePreferences,
+  loadLibraryHomeQuery,
+  saveLibraryHomePreferences,
+  saveLibraryHomeQuery,
+} from "../utils/libraryHomeState";
 
 function WorkIcon() {
   return (
@@ -26,9 +33,7 @@ function WorkIcon() {
 }
 
 function ReadingProgress({ history }: { history?: ReadingHistory }) {
-  const progress = history && history.totalFiles > 0
-    ? Math.min(100, (history.currentIndex + 1) / history.totalFiles * 100)
-    : 0;
+  const progress = getHistoryProgressPercent(history);
 
   return (
     <div className="flex items-center gap-3">
@@ -69,9 +74,14 @@ export default function LibraryHome() {
     setActionError(message);
     if (!message) clearError();
   };
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState("recent");
-  const [layout, setLayout] = useState<"grid" | "list">("grid");
+  const [query, setQuery] = useState(() => loadLibraryHomeQuery(sessionStorage));
+  const [preferences, setPreferences] = useState(() => loadLibraryHomePreferences(localStorage));
+  const { sort, layout } = preferences;
+  useEffect(() => { saveLibraryHomeQuery(query, sessionStorage); }, [query]);
+  useEffect(() => { saveLibraryHomePreferences(preferences, localStorage); }, [preferences]);
+  const recentById = useMemo(() => new Map(items.map((item) =>
+    [item.id, getRecentHistoryForLibrary(histories, item.rootPath)],
+  )), [items, histories]);
   const latest = histories
     .filter((history) => items.some((item) => isPathInsideRoot(history.folderPath, item.rootPath)))
     .sort((a, b) => b.lastReadTime - a.lastReadTime)[0];
@@ -84,9 +94,9 @@ export default function LibraryHome() {
       .filter((item) => terms.every((term) => `${item.name} ${item.rootPath}`.toLocaleLowerCase().includes(term)))
       .sort((a, b) => sort === "name"
         ? a.name.localeCompare(b.name, "zh-CN", { numeric: true })
-        : (getRecentHistoryForLibrary(histories, b.rootPath)?.lastReadTime ?? b.lastOpenedAt)
-          - (getRecentHistoryForLibrary(histories, a.rootPath)?.lastReadTime ?? a.lastOpenedAt));
-  }, [items, histories, query, sort]);
+        : (recentById.get(b.id)?.lastReadTime ?? b.lastOpenedAt)
+          - (recentById.get(a.id)?.lastReadTime ?? a.lastOpenedAt));
+  }, [items, recentById, query, sort]);
 
   const addFolder = async (temporary: boolean) => {
     if (pending) return;
@@ -218,55 +228,45 @@ export default function LibraryHome() {
               <select
                 className="ui-input"
                 value={sort}
-                onChange={(event) => setSort(event.target.value)}
+                onChange={(event) => setPreferences((value) => ({ ...value, sort: event.target.value === "name" ? "name" : "recent" }))}
               >
                 <option value="recent">最近阅读</option>
                 <option value="name">名称排序</option>
               </select>
             </label>
-            <div role="group" aria-label="作品显示方式" className="flex gap-1">
+            <div role="group" aria-label="作品显示方式" className="library-view-switch">
               <button
                 type="button"
-                className="ui-button"
+                className="library-view-option"
                 aria-label="卡片显示"
                 aria-pressed={layout === "grid"}
-                onClick={() => setLayout("grid")}
-                style={layout === "grid"
-                  ? { borderColor: "#4596ff", color: "#82b8ff" }
-                  : undefined}
+                onClick={() => setPreferences((value) => ({ ...value, layout: "grid" }))}
               >
-                ▦
+                卡片
               </button>
               <button
                 type="button"
-                className="ui-button"
+                className="library-view-option"
                 aria-label="列表显示"
                 aria-pressed={layout === "list"}
-                onClick={() => setLayout("list")}
-                style={layout === "list"
-                  ? { borderColor: "#4596ff", color: "#82b8ff" }
-                  : undefined}
+                onClick={() => setPreferences((value) => ({ ...value, layout: "list" }))}
               >
-                ☰
+                列表
               </button>
             </div>
           </div>
 
-          <h2 className="mb-4 text-base font-semibold">
-            {query ? "搜索结果" : "全部作品"}
-            <span className="ml-3 font-normal text-slate-500">{visible.length}</span>
-          </h2>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold" aria-live="polite" aria-atomic="true">
+              {query.trim() ? "搜索结果" : "全部作品"}
+              <span className="ml-3 font-normal text-slate-400">{visible.length}{query.trim() ? ` / ${items.length}` : ""}</span>
+            </h2>
+            {query && <button type="button" onClick={() => setQuery("")} className="rounded px-2 py-1 text-sm text-blue-300 hover:bg-white/5">清除搜索</button>}
+          </div>
 
           {visible.length === 0 && (
             <div className="py-16 text-center text-sm text-slate-400">
               没有匹配的作品。
-              <button
-                type="button"
-                onClick={() => setQuery("")}
-                className="ml-3 text-blue-300 hover:underline"
-              >
-                清除搜索
-              </button>
             </div>
           )}
 
@@ -275,7 +275,7 @@ export default function LibraryHome() {
             : "flex flex-col gap-3"}
           >
             {visible.map((item) => {
-              const recent = getRecentHistoryForLibrary(histories, item.rootPath);
+              const recent = recentById.get(item.id);
               const scan = counts[item.id];
 
               return (
@@ -292,7 +292,8 @@ export default function LibraryHome() {
                         <button
                           type="button"
                           onClick={() => openLibrary(item)}
-                          className="text-left hover:text-blue-300"
+                          className="block w-full truncate text-left hover:text-blue-300"
+                          title={item.name}
                         >
                           {item.name}
                         </button>

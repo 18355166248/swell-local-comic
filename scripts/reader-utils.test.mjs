@@ -5,7 +5,14 @@ import ts from "typescript";
 
 const source = await readFile(new URL("../src/utils/readerUtils.ts", import.meta.url), "utf8");
 const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022 } }).outputText;
-const { parsePageNumber, getPageRange } = await import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
+const { parsePageNumber, getPageRange, normalizeImagesPerGroup } = await import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
+
+test("saved image grouping accepts supported counts and safely defaults legacy or invalid values", () => {
+  for (const count of [1, 2, 3, 5, 20]) assert.equal(normalizeImagesPerGroup(count), count);
+  for (const value of [undefined, null, 0, -1, 21, 1.5, NaN, Infinity, "2"]) {
+    assert.equal(normalizeImagesPerGroup(value), 1, String(value));
+  }
+});
 
 test("page input accepts only in-range whole page numbers", () => {
   assert.equal(parsePageNumber(" 12 ", 25), 11);

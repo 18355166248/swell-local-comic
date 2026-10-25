@@ -188,3 +188,37 @@ test("preview totals count images in a parent directory as a chapter too", () =>
   const index = libraryUtils.buildLibraryPreviewIndex({ ...previewTree, readable: true, imageCount: 4 }, []);
   assert.deepEqual(index.totals, { total: 4, read: 0, reading: 0 });
 });
+
+test("scroll progress uses the saved distance consistently for its bar and label", () => {
+  const history = { ...previewHistory(1, 0, 100), totalFiles: 3, viewMode: "scroll", scrollPosition: 540, scrollHeight: 1000 };
+  assert.equal(libraryUtils.getHistoryProgressPercent(history), 54);
+  assert.equal(libraryUtils.getHistoryProgressText(history), "滚动 54%");
+  assert.equal(libraryUtils.getHistoryProgressPercent({ ...history, scrollPosition: 0 }), 0);
+  assert.ok(Math.abs(libraryUtils.getHistoryProgressPercent({ ...history, viewMode: "page" }) - 100 / 3) < 1e-10);
+  assert.equal(libraryUtils.getHistoryProgressText({ ...history, viewMode: "page" }), "1 / 3");
+});
+
+test("progress falls back to page position when usable scroll measurements are absent", () => {
+  const history = { ...previewHistory(1, 3, 100), viewMode: "scroll", scrollPosition: 540 };
+  for (const scrollHeight of [undefined, 0, -1, NaN, Infinity]) {
+    assert.equal(libraryUtils.getHistoryProgressPercent({ ...history, scrollHeight }), 40);
+  }
+  for (const scrollPosition of [undefined, NaN, Infinity]) {
+    assert.equal(libraryUtils.getHistoryProgressPercent({ ...history, scrollHeight: 1000, scrollPosition }), 40);
+  }
+  assert.equal(libraryUtils.getHistoryProgressText(history), "滚动 540px");
+  assert.equal(libraryUtils.getHistoryProgressPercent(undefined), 0);
+  assert.equal(libraryUtils.getHistoryProgressPercent({ ...history, totalFiles: 0 }), 0);
+});
+
+test("saved positions outside the current range remain bounded between zero and 100 percent", () => {
+  const history = { ...previewHistory(1, 3, 100), viewMode: "scroll", scrollHeight: 1000 };
+  for (const [scrollPosition, percent] of [[-100, 0], [1200, 100]]) {
+    const entry = { ...history, scrollPosition };
+    assert.equal(libraryUtils.getHistoryProgressPercent(entry), percent);
+    assert.equal(libraryUtils.getHistoryProgressText(entry), `滚动 ${percent}%`);
+  }
+  for (const [currentIndex, percent] of [[-5, 0], [100, 100], [NaN, 0], [Infinity, 0]]) {
+    assert.equal(libraryUtils.getHistoryProgressPercent({ ...history, viewMode: "page", currentIndex }), percent);
+  }
+});

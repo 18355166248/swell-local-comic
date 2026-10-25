@@ -25,7 +25,7 @@ const { buildReadingHistoryInput } = await import(await getModuleUrl(new URL("..
 const state = {
   folderName: "Chapter 1", folderPath: "F:/Comics/Chapter 1",
   files: [{ name: "01.png", path: "F:/Comics/Chapter 1/01.png" }, { name: "02.png", path: "F:/Comics/Chapter 1/02.png" }],
-  currentIndex: 1, zoom: 1.2, viewMode: "scroll", imageWidth: 600,
+  currentIndex: 1, zoom: 1.2, viewMode: "scroll", imageWidth: 600, imagesPerGroup: 2,
   scrollRatio: 0.94, scrollPosition: 100, scrollHeight: 1200, isLoading: false,
 };
 
@@ -46,11 +46,25 @@ test("normal buffered saves retain reader preferences while page mode ignores sc
   assert.equal(history.scrollHeight, 1200);
   assert.equal(history.zoom, 1.2);
   assert.equal(history.imageWidth, 600);
+  assert.equal(history.imagesPerGroup, 2);
   assert.equal(history.scrollRatio, 0.94);
   assert.equal(history.files, state.files);
   const pageHistory = buildReadingHistoryInput({ ...state, viewMode: "page" }, { position: 735, height: 1800 });
   assert.equal(pageHistory.scrollPosition, undefined);
   assert.equal(pageHistory.scrollHeight, undefined);
+  assert.equal(pageHistory.imagesPerGroup, 2);
+});
+
+test("immediate and buffered saves retain the grouping that produced the saved scroll offset", () => {
+  for (const imagesPerGroup of [1, 2, 5, 20]) {
+    const reader = { ...state, imagesPerGroup };
+    const buffered = buildReadingHistoryInput(reader);
+    const immediate = buildReadingHistoryInput(reader, { position: 735, height: 1800 });
+    assert.equal(buffered.imagesPerGroup, imagesPerGroup);
+    assert.equal(buffered.scrollPosition, 100);
+    assert.equal(immediate.imagesPerGroup, imagesPerGroup);
+    assert.equal(immediate.scrollPosition, 735);
+  }
 });
 
 test("incomplete or loading chapters do not produce history entries", () => {

@@ -7,7 +7,7 @@ import type { ScrollPositionSnapshot } from "../utils/readerPosition";
 
 export type ReadingHistoryState = Pick<ComicViewerState,
   "folderName" | "folderPath" | "files" | "currentIndex" | "zoom" |
-  "viewMode" | "imageWidth" | "scrollRatio" | "scrollPosition" |
+  "viewMode" | "imageWidth" | "imagesPerGroup" | "scrollRatio" | "scrollPosition" |
   "scrollHeight" | "isLoading" | "isRestoringScrollPosition"
 >;
 
@@ -30,6 +30,7 @@ export function buildReadingHistoryInput(
     zoom: state.zoom,
     viewMode: state.viewMode,
     imageWidth: state.imageWidth,
+    imagesPerGroup: state.imagesPerGroup,
     scrollRatio: state.scrollRatio,
     scrollPosition: state.viewMode === "scroll" ? scrollSnapshot?.position ?? state.scrollPosition : undefined,
     scrollHeight: state.viewMode === "scroll" ? scrollSnapshot?.height ?? state.scrollHeight : undefined,
@@ -44,6 +45,7 @@ export function useReadingHistoryPersistence({
   zoom,
   viewMode,
   imageWidth,
+  imagesPerGroup,
   scrollRatio,
   scrollPosition,
   scrollHeight,
@@ -53,10 +55,10 @@ export function useReadingHistoryPersistence({
   const historyWriter = useMemo(() => createBufferedWriter(saveHistory), []);
   const historyState = useMemo<ReadingHistoryState>(() => ({
     folderName, folderPath, files, currentIndex, zoom, viewMode,
-    imageWidth, scrollRatio, scrollPosition, scrollHeight, isLoading, isRestoringScrollPosition,
+    imageWidth, imagesPerGroup, scrollRatio, scrollPosition, scrollHeight, isLoading, isRestoringScrollPosition,
   }), [
     folderName, folderPath, files, currentIndex, zoom, viewMode,
-    imageWidth, scrollRatio, scrollPosition, scrollHeight, isLoading, isRestoringScrollPosition,
+    imageWidth, imagesPerGroup, scrollRatio, scrollPosition, scrollHeight, isLoading, isRestoringScrollPosition,
   ]);
 
   useEffect(() => {

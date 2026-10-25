@@ -1,3 +1,7 @@
+/** Default legacy histories to one image per row; reject invalid counts before building rows. */
+export const normalizeImagesPerGroup = (value: unknown): number =>
+  typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 20 ? value : 1;
+
 export const parsePageNumber = (value: string, total: number): number | null => {
   if (!/^\d+$/.test(value.trim())) return null;
   const page = Number(value);

@@ -143,18 +143,29 @@ export const createReadHistoryInputFromChapter = (
   viewMode: "scroll",
 });
 
+export const getHistoryProgressPercent = (
+  history: ReadingHistory | undefined,
+): number => {
+  if (!history) return 0;
+
+  let progress = 0;
+  if (history.viewMode === "scroll" && typeof history.scrollPosition === "number" && Number.isFinite(history.scrollPosition)
+    && typeof history.scrollHeight === "number" && Number.isFinite(history.scrollHeight) && history.scrollHeight > 0) {
+    progress = history.scrollPosition / history.scrollHeight * 100;
+  } else if (Number.isFinite(history.currentIndex) && Number.isFinite(history.totalFiles) && history.totalFiles > 0) {
+    progress = (history.currentIndex + 1) / history.totalFiles * 100;
+  }
+  return Math.max(0, Math.min(progress, 100));
+};
+
 export const getHistoryProgressText = (
   history: ReadingHistory | undefined,
 ): string => {
   if (!history) return "未开始";
 
-  if (history.viewMode === "scroll" && history.scrollPosition !== undefined) {
-    if (history.scrollHeight && history.scrollHeight > 0) {
-      const progress = Math.min(
-        Math.round((history.scrollPosition / history.scrollHeight) * 100),
-        100,
-      );
-      return `滚动 ${progress}%`;
+  if (history.viewMode === "scroll" && typeof history.scrollPosition === "number" && Number.isFinite(history.scrollPosition)) {
+    if (typeof history.scrollHeight === "number" && Number.isFinite(history.scrollHeight) && history.scrollHeight > 0) {
+      return `滚动 ${Math.round(getHistoryProgressPercent(history))}%`;
     }
     return `滚动 ${Math.round(history.scrollPosition)}px`;
   }

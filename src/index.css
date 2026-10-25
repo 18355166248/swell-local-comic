@@ -50,6 +50,10 @@ button:disabled { cursor: not-allowed; }
 .ui-input { min-height: 40px; border: 1px solid #2b3a4c; border-radius: 8px; background: #0e1721; padding: 9px 12px; color: #e6edf5; font-size: 14px; }
 .ui-input::placeholder { color: #8090a4; }
 .ui-input:focus { border-color: #4596ff; }
+.library-view-switch { display: inline-flex; flex-shrink: 0; gap: 4px; padding: 4px; border: 1px solid #2b3a4c; border-radius: 9px; background: #0e1721; }
+.library-view-option { min-height: 32px; padding: 5px 12px; border: 1px solid transparent; border-radius: 5px; color: #9baabd; font-size: 14px; }
+.library-view-option:hover { background: #1b2a3b; color: #e6edf5; }
+.library-view-option[aria-pressed="true"] { border-color: #366298; background: #193657; color: #c2ddff; }
 .work-card { border: 1px solid var(--line); border-radius: 12px; background: linear-gradient(135deg, #121d29, #101923); padding: 20px; transition: border-color .15s; }
 .work-card:hover, .work-card:focus-within { border-color: #466383; }
 .work-icon { display: flex; align-items: center; justify-content: center; width: 72px; height: 76px; flex-shrink: 0; border-radius: 10px; border: 1px solid #2b4159; background: linear-gradient(145deg, #10243d, #0b141f); }

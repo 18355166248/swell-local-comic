@@ -17,6 +17,7 @@ import {
   getPreviousSiblingFolder,
 } from "../utils/fileUtils";
 import { normalizeLibraryPathId } from "../utils/libraryUtils";
+import { normalizeImagesPerGroup } from "../utils/readerUtils";
 import { useReadingHistoryPersistence } from "./useReadingHistoryPersistence";
 import { createReaderImageResources, createReaderResourceLifecycle, getReaderImageLoadOrder, StaleReaderImageRequest, type ReaderImageState, type ReaderImageSize } from "../utils/readerImageResources";
 
@@ -40,6 +41,7 @@ export const useComicViewer = () => {
   const [imageUrl, setImageUrl] = useState<string>("");
   const [viewMode, setViewMode] = useState<ViewMode>("scroll");
   const [imageWidth, setImageWidth] = useState<number>(600);
+  const [imagesPerGroup, setImagesPerGroup] = useState(1);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [scrollImageStates, setScrollImageStates] = useState<ReaderImageState[]>([]);
   const [scrollImageSizes, setScrollImageSizes] = useState<(ReaderImageSize | null)[]>([]);
@@ -78,7 +80,7 @@ export const useComicViewer = () => {
   const [error, setError] = useState<string | null>(null);
   const { persistHistory, flushHistory } = useReadingHistoryPersistence({
     folderName, folderPath, files, currentIndex, zoom, viewMode,
-    imageWidth, scrollRatio, scrollPosition, scrollHeight, isLoading, isRestoringScrollPosition,
+    imageWidth, imagesPerGroup, scrollRatio, scrollPosition, scrollHeight, isLoading, isRestoringScrollPosition,
   }, isRestoringScrollPositionRef);
 
   const finishScrollRestoration = useCallback(() => {
@@ -220,6 +222,7 @@ export const useComicViewer = () => {
       activeViewModeRef.current = targetMode;
       setViewMode(targetMode);
       setImageWidth(restoreData?.imageWidth ?? imageWidth);
+      if (restoreData) setImagesPerGroup(normalizeImagesPerGroup(restoreData.imagesPerGroup));
       setScrollRatio(restoreData?.scrollRatio ?? DEFAULT_SCROLL_RATIO);
       setScrollPosition(targetMode === "scroll" && restoreData ? restoreData.scrollPosition : 0);
       setScrollHeight(targetMode === "scroll" && restoreData ? restoreData.scrollHeight : 0);
@@ -660,6 +663,10 @@ export const useComicViewer = () => {
     setImageWidth(Math.max(200, Math.min(2000, width)));
   }, []);
 
+  const setImagesPerGroupValue = useCallback((count: number) => {
+    setImagesPerGroup(normalizeImagesPerGroup(count));
+  }, []);
+
   // 鼠标滚轮处理
   const handleWheel = useCallback(
     (e: WheelEvent) => {
@@ -760,6 +767,7 @@ export const useComicViewer = () => {
     handleWheel,
     toggleViewMode,
     setImageWidth: setImageWidthValue,
+    setImagesPerGroup: setImagesPerGroupValue,
     setScrollRatio: setScrollRatioWrapped,
     goToPage,
     onScrollPositionChange,
@@ -771,7 +779,7 @@ export const useComicViewer = () => {
     loadNextFolder: loadNextFolderAction,
   }), [
     handleFolderSelect, nextPage, prevPage, zoomIn, zoomOut, resetZoom,
-    handleWheel, toggleViewMode, setImageWidthValue, setScrollRatioWrapped,
+    handleWheel, toggleViewMode, setImageWidthValue, setImagesPerGroupValue, setScrollRatioWrapped,
     goToPage, onScrollPositionChange, onCurrentImageChange, retryImage, finishScrollRestoration, loadNextFolderAction, persistHistory, flushHistory,
   ]);
 
@@ -782,6 +790,7 @@ export const useComicViewer = () => {
     imageUrl,
     viewMode,
     imageWidth,
+    imagesPerGroup,
     imageUrls,
     scrollImageStates,
     scrollImageSizes,
@@ -800,7 +809,7 @@ export const useComicViewer = () => {
     loadingProgress,
     error,
   }), [
-    files, currentIndex, zoom, imageUrl, viewMode, imageWidth, imageUrls,
+    files, currentIndex, zoom, imageUrl, viewMode, imageWidth, imagesPerGroup, imageUrls,
     scrollImageStates, scrollImageSizes, isBackgroundLoading, isScrollLayoutReady, isRestoringScrollPosition,
     folderName, folderPath, scrollPosition, scrollHeight, scrollTargetIndex, scrollJumpRequest, scrollRatio,
     isLoading, isImageLoading, loadingProgress, error,

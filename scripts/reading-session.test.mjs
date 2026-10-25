@@ -131,6 +131,25 @@ test("an unchanged file order keeps its precise offset despite Windows path casi
   assert.equal(restored().scrollHeight, 3000);
 });
 
+test("history, library continuation and chapter entry retain grouping with its exact saved offset", async () => {
+  for (const options of [{}, { libraries: [library("F:/books/series")] }, { chapters }]) {
+    const { restored } = setup();
+    await prepareReadingSession(history({ imagesPerGroup: 2, scrollPosition: 1200, scrollHeight: 3000 }), options);
+    assert.equal(restored().imagesPerGroup, 2);
+    assert.equal(restored().scrollPosition, 1200);
+    assert.equal(restored().scrollHeight, 3000);
+  }
+});
+
+test("a corrected page anchor retains its saved image grouping after files change", async () => {
+  const insertedFiles = [{ name: "00.png", path: `${chapterPath}/00.png` }, ...files];
+  const { restored } = setup({ scanImageFiles: async () => insertedFiles });
+  await prepareReadingSession(history({ imagesPerGroup: 2, scrollPosition: 1200 }));
+  assert.equal(restored().imagesPerGroup, 2);
+  assert.equal(restored().currentIndex, 2);
+  assert.equal(restored().scrollPosition, undefined);
+});
+
 test("correcting a mismatched saved filename also drops an offset for the wrong page", async () => {
   const { restored } = setup();
   await prepareReadingSession(history({ currentIndex: 0, currentFileName: "03.png", scrollPosition: 100, scrollHeight: 3000 }));
